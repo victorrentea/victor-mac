@@ -171,6 +171,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private let retinaShareRes = RetinaShareResolution()
     /// 🔊 The old volume HUD, bottom centre, instead of Tahoe's corner pill.
     private let volumeHUD = VolumeHUD()
+    private let djiLinkButton = DjiLinkButton()
     /// 🎥 Layout Zoom/Teams runs here: it waits on the app opening panels, and a second
     /// click while one is running must queue behind it, not race it.
     private let zoomLayoutQueue = DispatchQueue(label: "ro.victorrentea.macos-addons.zoom-layout",
@@ -841,8 +842,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 self.djiNoTxWarning.show(screens: provider)
             case "no-tx-off":
                 self.djiNoTxWarning.hide(by: "test hook")
+            case "link-press":
+                // The receiver's link button, as a press on it: toggles the input mute, shows the square.
+                overlayInfo("🎙️ test hook: simulating a press on the receiver's link button")
+                return self.djiLinkButton.pressed()
+            case "link-button":
+                return self.djiLinkButton.stateJSON()
             default:
-                return "{\"error\":\"kind is battery, link-lost, link-back, no-tx or no-tx-off\"}"
+                return "{\"error\":\"kind is battery, link-lost, link-back, no-tx, no-tx-off, link-press or link-button\"}"
             }
             return self.djiReceiver.stateJSON()
         }
@@ -1778,6 +1785,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         // 🔊 Volume keys → our own HUD at the bottom centre; macOS never sees them.
         volumeHUD.start()
+        // 🎙️ The DJI receiver's link button → mute/unmute the voice, with its own square.
+        djiLinkButton.start()
         tabletServer?.onTestVolumeHUD = { [weak self] level, muted in
             guard let self else { return "{}" }
             if let level { self.volumeHUD.show(level: level, muted: muted) }
