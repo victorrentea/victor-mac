@@ -23,6 +23,13 @@ between this app and **Victor Effects**.
   corner (2026-11-05): `BannerClosePanel` is its own panel, because the banner
   itself stays click-through, and it takes the first click without activating
   the app. Unlike the 🟢 row, the ✕ leaves the clipboard alone.
+  **The session link raises itself when a session starts** (2026-11-16): the
+  daemon's `session_started` carries `show_join_link: true` only when the trainer
+  has just started the session, never on the re-announce after a daemon restart
+  or an addons reconnect. No clipboard write on that path.
+  **A click on the QR blows it up** to the largest square between the bottom of
+  the screen and the link, a second click sends it back to its corner
+  (`JoinLinkBanner.qrFrame`); every `show` starts small.
   **The text fills the screen width** (2026-10-01): the font is scaled up *or*
   down until the URL spans the screen minus a 16 pt gutter, the banner is
   full-width and its height follows the text. Monospaced text scales linearly,

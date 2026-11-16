@@ -326,7 +326,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             if type == "session_started", let url = json["participant_url"] as? String {
                 let folder = json["session_folder"] as? String
                 let lastDay = json["session_last_day"] as? String
-                self?.handleSessionStarted(participantUrl: url, sessionFolder: folder, lastDay: lastDay)
+                let showJoinLink = json["show_join_link"] as? Bool ?? false
+                self?.handleSessionStarted(participantUrl: url, sessionFolder: folder, lastDay: lastDay,
+                                           showJoinLink: showJoinLink)
             } else if type == "session_ended" {
                 self?.handleSessionEnded()
             }
@@ -1468,6 +1470,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             if let close = banner.closeButtonFrame {
                 let top = CGDisplayBounds(CGMainDisplayID()).height
                 json += ",\"close\":[\(Int(close.midX)),\(Int(top - close.midY))]"
+            }
+            if let qr = banner.qrFrameOnScreen {
+                let top = CGDisplayBounds(CGMainDisplayID()).height
+                json += ",\"qr\":[\(Int(qr.midX)),\(Int(top - qr.midY))]"
+                    + ",\"qrSize\":\(Int(qr.width)),\"qrExpanded\":\(banner.isQRExpanded)"
             }
             return json + "}"
         }
@@ -3094,7 +3101,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     // `confetti` message handling — was dead code kept alive by its own
     // scheduler and was removed with the effects extraction in 2026-09.
 
-    private func handleSessionStarted(participantUrl: String, sessionFolder: String?, lastDay: String? = nil) {
+    /// - Parameter showJoinLink: the trainer has just started the session (as opposed
+    ///   to the daemon re-announcing it after a restart): put the link and QR up.
+    private func handleSessionStarted(participantUrl: String, sessionFolder: String?, lastDay: String? = nil,
+                                      showJoinLink: Bool = false) {
         isSessionActive = true
         sessionLastDay = lastDay
         self.participantUrl = stripProtocolPrefix(from: participantUrl)
@@ -3104,6 +3114,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             ScreenshotManager.sessionFolder = nil
         }
         menuBarManager.setJoinLinkEnabled(true)
+        if showJoinLink { showSessionJoinBanner() }
+    }
+
+    /// The session's Interact link, persistent, on the projected retina.
+    private func showSessionJoinBanner() {
+        guard let banner = joinLinkBanner, isSessionActive, let url = participantUrl else { return }
+        banner.setTargetScreen(AppDelegate.findRetinaScreen())
+        banner.show(url: url, uppercaseLastSegment: true, persistent: true)
     }
 
     private func handleSessionEnded() {
@@ -3168,9 +3186,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         if banner.bannerIsVisible {
             banner.hide()
         } else {
-            guard isSessionActive, let url = participantUrl else { return }
-            banner.setTargetScreen(AppDelegate.findRetinaScreen())
-            banner.show(url: url, uppercaseLastSegment: true, persistent: true)
+            showSessionJoinBanner()
         }
     }
 

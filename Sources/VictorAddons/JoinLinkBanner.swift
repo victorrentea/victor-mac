@@ -7,6 +7,8 @@ import Foundation
 /// countdown on mouse-out, then a 3s fade. The session's Interact link is
 /// `persistent`: no countdown, no progress bar — it stays until toggled off.
 /// Either one can be closed with one click on the red ✕ in the bottom-right corner.
+/// A click on the QR blows it up to fill the screen under the link, for the back
+/// of the room; a second click sends it back to its corner.
 class JoinLinkBanner: NSPanel {
     private let urlLabel: NSTextField
     private var fadeTimer: Timer?
@@ -26,6 +28,20 @@ class JoinLinkBanner: NSPanel {
     // QR code panel
     private var qrPanel: NSPanel?
     private var qrImageView: NSImageView?
+    private(set) var isQRExpanded = false
+    static let qrMargin: CGFloat = 20
+
+    /// Where the QR goes: the bottom-right corner, or — expanded — the largest
+    /// square that fits between the bottom of the screen and the link banner.
+    static func qrFrame(screen: NSRect, banner: NSRect, expanded: Bool) -> NSRect {
+        guard expanded else {
+            let size = screen.height * 0.30
+            return NSRect(x: screen.maxX - size - qrMargin, y: screen.minY + qrMargin, width: size, height: size)
+        }
+        let room = banner.minY - screen.minY
+        let size = max(0, min(screen.width, room) - qrMargin * 2)
+        return NSRect(x: screen.midX - size / 2, y: screen.minY + (room - size) / 2, width: size, height: size)
+    }
 
     // Progress bar (yellow, full-width, shrinks over `progressDuration`).
     // Pinned to the top edge of the screen; click dismisses, hover resets.
@@ -107,17 +123,19 @@ class JoinLinkBanner: NSPanel {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false
-        panel.ignoresMouseEvents = true
         panel.alphaValue = 1.0
 
-        let imageView = NSImageView(frame: NSRect(x: 0, y: 0, width: qrSize, height: qrSize))
-        imageView.imageScaling = .scaleProportionallyUpOrDown
-        panel.contentView?.addSubview(imageView)
+        // The QR is the one clickable part besides the ✕: a click toggles its size.
+        let clickView = QRClickView(frame: NSRect(x: 0, y: 0, width: qrSize, height: qrSize))
+        clickView.onClick = { [weak self] in self?.toggleQRSize() }
+        panel.contentView = clickView
 
-        // Position: bottom-right of screen
-        let x = targetScreen.frame.origin.x + targetScreen.frame.width - qrSize - 20
-        let y = targetScreen.frame.origin.y + 20
-        panel.setFrame(NSRect(x: x, y: y, width: qrSize, height: qrSize), display: false)
+        let imageView = NSImageView(frame: clickView.bounds)
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.autoresizingMask = [.width, .height]
+        clickView.addSubview(imageView)
+
+        panel.setFrame(Self.qrFrame(screen: targetScreen.frame, banner: .zero, expanded: false), display: false)
 
         self.qrPanel = panel
         self.qrImageView = imageView
@@ -233,11 +251,9 @@ class JoinLinkBanner: NSPanel {
 
         // Re-position against the current targetScreen so multi-monitor swaps
         // and screen-config changes after launch place the QR in the right corner.
-        let qrSize = targetScreen.frame.height * 0.30
-        let x = targetScreen.frame.origin.x + targetScreen.frame.width - qrSize - 20
-        let y = targetScreen.frame.origin.y + 20
-        qrPanel.setFrame(NSRect(x: x, y: y, width: qrSize, height: qrSize), display: false)
-        qrImageView.frame = NSRect(x: 0, y: 0, width: qrSize, height: qrSize)
+        // Every show starts small, in the corner.
+        isQRExpanded = false
+        qrPanel.setFrame(Self.qrFrame(screen: targetScreen.frame, banner: frame, expanded: false), display: false)
 
         // Prepend https:// for the QR code so phones can open it directly
         let fullUrl = url.hasPrefix("http") ? url : "https://\(url)"
@@ -251,7 +267,23 @@ class JoinLinkBanner: NSPanel {
     private func hideQR() {
         qrPanel?.alphaValue = 0.0
         qrPanel?.orderOut(nil)
+        isQRExpanded = false
     }
+
+    /// Corner ⇄ full screen under the link.
+    func toggleQRSize() {
+        guard bannerShowing, let qrPanel = qrPanel else { return }
+        isQRExpanded.toggle()
+        let target = Self.qrFrame(screen: targetScreen.frame, banner: frame, expanded: isQRExpanded)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.25
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            qrPanel.animator().setFrame(target, display: true)
+        }
+    }
+
+    /// Where the QR is on screen, in Cocoa points; nil while the banner is down.
+    var qrFrameOnScreen: NSRect? { bannerShowing ? qrPanel?.frame : nil }
 
     private func generateQRCode(from string: String) -> NSImage? {
         guard let data = string.data(using: .utf8),
@@ -438,6 +470,26 @@ final class BannerClosePanel: NSPanel {
         let button = BannerCloseButton(frame: NSRect(x: 0, y: 0, width: Self.size, height: Self.size))
         button.onClick = { [weak self] in self?.onClick?() }
         contentView = button
+    }
+}
+
+/// Hosts the QR image and turns a click on it into `onClick`.
+private final class QRClickView: NSView {
+    var onClick: (() -> Void)?
+
+    // The panel never becomes key, so the first click has to count.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    // The image view would otherwise swallow the click.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        frame.contains(point) ? self : nil
+    }
+
+    // Overridden so that the matching mouseUp comes here.
+    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
     }
 }
 
