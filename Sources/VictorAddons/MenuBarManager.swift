@@ -271,6 +271,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         breakItem.submenu = breakSubmenu
         let breakDurations: [(String, Int)] = [
             ("☕️ 1 minute", 1),
+            ("☕️ 2 minutes", 2),
             ("☕️ 5 minutes", 5),
             ("☕️ 10 minutes", 10),
             ("☕️ 12 minutes", 12),
