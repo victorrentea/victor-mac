@@ -13,13 +13,14 @@ between this app and **Victor Effects**.
 ## Overlay components still in this app
 
 - **`JoinLinkBanner`** — the participant join URL and its QR at the top of the
-  screen. Its own `NSPanel`, with no dependency on anything that left. Two modes:
-  a **clipboard link** (menu row / `/link/publish`) runs a 30 s yellow countdown
-  bar, then a 3 s fade, and opening the 💬 menu hides it; the **session's
-  Interact link** is `persistent` (2026-09-24, Victor's call) — no countdown, no
-  bar, and opening the menu no longer hides it. It goes away only when the
-  🟢 row is clicked again, the session ends, or `/link/hide` is called.
-  **Both modes close with one click on the red ✕** in the banner's bottom-right
+  screen. Its own `NSPanel`, with no dependency on anything that left. Two kinds:
+  a **clipboard link** (menu row / `/link/publish`) and the **session's Interact
+  link** (`sessionLink`, which only decides whose menu row carries the ✓).
+  **Neither expires on its own** (the session link since 2026-09-24, the
+  clipboard link since 2026-11-16, Victor's call both times): no countdown, no
+  yellow bar, no fade, and opening the 💬 menu does not hide it. A link goes away
+  only on the ✕, a second click on its menu row, the session's end, or `/link/hide`.
+  **Both kinds close with one click on the red ✕** in the banner's bottom-right
   corner (2026-11-05): `BannerClosePanel` is its own panel, because the banner
   itself stays click-through, and it takes the first click without activating
   the app. Unlike the 🟢 row, the ✕ leaves the clipboard alone.

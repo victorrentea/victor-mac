@@ -1464,7 +1464,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             if show, let screen = NSScreen.physical.max(by: { $0.frame.maxX < $1.frame.maxX }) {
                 banner.setTargetScreen(screen)
                 banner.show(url: self?.participantUrl ?? "interact.victorrentea.ro/TEST42",
-                            uppercaseLastSegment: true, persistent: true)
+                            uppercaseLastSegment: true, sessionLink: true)
             }
             var json = "{\"visible\":\(banner.bannerIsVisible)"
             if let close = banner.closeButtonFrame {
@@ -1674,12 +1674,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         MicPreference.watch { [weak self] in self?.adoptMicChoice() }
         adoptMicChoice()
         menuBarManager.onMenuOpened = { [weak self] in
-            // Opening the app menu is a clear "I'm done with the link" signal
-            // for a clipboard link. The session's Interact link is the exception
-            // (2026-09-24): it stays up until its own ✓ row is clicked again.
-            if let banner = self?.joinLinkBanner, banner.bannerIsVisible, !banner.isPersistent {
-                banner.hide()
-            }
             // Opening the menu is also the only moment the 🔴 row can be read,
             // so it is the right moment to re-read the flag behind it: it may
             // have been armed by something other than a click, and the hours
@@ -1718,14 +1712,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
         menuBarManager.isJoinLinkShown = { [weak self] in
             guard let banner = self?.joinLinkBanner else { return false }
-            return banner.bannerIsVisible && banner.isPersistent
+            return banner.bannerIsVisible && banner.isSessionLink
         }
         menuBarManager.onDisplayClipboardLink = { [weak self] in
             self?.displayClipboardLinkBanner()
         }
         menuBarManager.isClipboardLinkShown = { [weak self] in
             guard let banner = self?.joinLinkBanner else { return false }
-            return banner.bannerIsVisible && !banner.isPersistent
+            return banner.bannerIsVisible && !banner.isSessionLink
         }
         // Same path as ⌘⌃M and GET /test/reminder — off the main thread, since
         // the pasteboard read and any JPEG re-encode happen inline.
@@ -3122,11 +3116,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
     }
 
-    /// The session's Interact link, persistent, on the projected retina.
+    /// The session's Interact link, on the projected retina.
     private func showSessionJoinBanner() {
         guard let banner = joinLinkBanner, isSessionActive, let url = participantUrl else { return }
         banner.setTargetScreen(AppDelegate.findRetinaScreen())
-        banner.show(url: url, uppercaseLastSegment: true, persistent: true)
+        banner.show(url: url, uppercaseLastSegment: true, sessionLink: true)
     }
 
     private func handleSessionEnded() {
