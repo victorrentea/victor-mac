@@ -71,14 +71,38 @@ enum BrainEnergy {
     static func describe(_ state: State) -> String {
         switch state {
         case .idle:
-            return "No break yet today"
+            return "no break yet today"
         case let .draining(level, remaining):
-            return "\(Int((level * 100).rounded()))% · about \(minutes(remaining)) left"
+            return "left: ~\(spoken(remaining)) (\(Int((level * 100).rounded()))%)"
         case let .depleted(overdue):
-            if overdue < 60 { return "Depleted — break now" }
-            let m = Int(overdue / 60)
-            return "Depleted \(m < 60 ? "\(m) min" : minutes(overdue)) ago — break now"
+            return "depleted: \(ago(overdue))"
         }
+    }
+
+    /// The three lines of the tooltip and the grey menu rows: the title, how much
+    /// is left (or how long it has been empty), and when the battery was last full.
+    static func lines(_ state: State, reference: Date?, now: Date) -> [String] {
+        let started: String
+        if let reference {
+            started = "started: \(ago(max(0, now.timeIntervalSince(reference))))"
+        } else {
+            started = "started: —"
+        }
+        return ["Brain🧠 Stamina", describe(state), started]
+    }
+
+    /// "40 min ago", "1h 5m ago", "just now" — for how long ago something was.
+    static func ago(_ seconds: TimeInterval) -> String {
+        if seconds < 60 { return "just now" }
+        let m = Int(seconds / 60)
+        return m < 60 ? "\(m) min ago" : minutes(seconds) + " ago"
+    }
+
+    /// "~10 minutes" / "1 minute" — a spoken length, rounded up: "about" is implied.
+    static func spoken(_ seconds: TimeInterval) -> String {
+        let m = Int((seconds / 60).rounded(.up))
+        if m >= 60 { return minutes(seconds) }
+        return "\(m) minute\(m == 1 ? "" : "s")"
     }
 
     static func minutes(_ seconds: TimeInterval) -> String {
@@ -220,7 +244,8 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
     private let breakEndedAt: () -> Date?
     private var statusItem: NSStatusItem?
     private let menu = NSMenu()
-    private let statusRow = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let statusRows = (0..<3).map { _ in NSMenuItem(title: "", action: nil, keyEquivalent: "") }
+    private var summary: [String] = []
     private var tick: Timer?
     private var blinkTimer: Timer?
     private var blinkOn = true
@@ -229,8 +254,10 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
     init(breakEndedAt: @escaping () -> Date?) {
         self.breakEndedAt = breakEndedAt
         super.init()
-        statusRow.isEnabled = false
-        menu.addItem(statusRow)
+        for row in statusRows {
+            row.isEnabled = false          // grey: information, not an action
+            menu.addItem(row)
+        }
         menu.addItem(.separator())
         let refill = NSMenuItem(title: "Refill now", action: #selector(refillNow), keyEquivalent: "")
         refill.target = self
@@ -280,7 +307,8 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
             blinkTimer = nil
             blinkOn = true
         }
-        statusRow.title = "🧠 " + BrainEnergy.describe(state)
+        summary = BrainEnergy.lines(state, reference: reference, now: now)
+        for (row, line) in zip(statusRows, summary) { row.title = line }
         statusItem?.isVisible = BrainEnergy.isShown(state, reference: reference,
                                                     hiddenAt: BrainBatterySettings.hiddenAt)
         draw()
@@ -288,7 +316,7 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
 
     private func draw() {
         statusItem?.button?.image = BrainBatteryIcon.image(for: state, blinkOn: blinkOn)
-        statusItem?.button?.toolTip = "Brain battery: " + BrainEnergy.describe(state)
+        statusItem?.button?.toolTip = summary.joined(separator: "\n")
     }
 
     /// Full again, as of now: **Refill now**, and a training session the trainer
