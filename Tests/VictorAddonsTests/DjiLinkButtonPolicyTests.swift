@@ -17,8 +17,22 @@ final class DjiLinkButtonPolicyTests: XCTestCase {
 
     func testABouncingSwitchIsOnePress() {
         let t = Date()
-        XCTAssertFalse(DjiLinkButtonPolicy.accepts(now: t.addingTimeInterval(0.05), last: t))
-        XCTAssertTrue(DjiLinkButtonPolicy.accepts(now: t.addingTimeInterval(0.4), last: t))
+        XCTAssertEqual(DjiLinkButtonPolicy.onPress(now: t.addingTimeInterval(0.01), last: t, waitingForSecond: true), .bounce)
+    }
+
+    /// 2026-11-16: two presses toggle ChatGPT's voice, one mutes.
+    func testASecondPressInsideTheWindowMakesADouble() {
+        let t = Date()
+        XCTAssertEqual(DjiLinkButtonPolicy.onPress(now: t.addingTimeInterval(0.2), last: t, waitingForSecond: true), .second)
+        XCTAssertEqual(DjiLinkButtonPolicy.onPress(now: t.addingTimeInterval(0.39), last: t, waitingForSecond: true), .second)
+    }
+
+    func testAPressAfterTheWindowOrWithNothingWaitingIsAFirst() {
+        let t = Date()
+        XCTAssertEqual(DjiLinkButtonPolicy.onPress(now: t.addingTimeInterval(0.6), last: t, waitingForSecond: true), .first)
+        XCTAssertEqual(DjiLinkButtonPolicy.onPress(now: t.addingTimeInterval(0.2), last: t, waitingForSecond: false), .first,
+                       "after a double, the next press starts over")
+        XCTAssertEqual(DjiLinkButtonPolicy.onPress(now: t, last: .distantPast, waitingForSecond: false), .first)
     }
 
     func testTheMicrophoneIsStruckThroughOnlyWhenMuted() {

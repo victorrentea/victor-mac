@@ -13,12 +13,19 @@ import IOKit.hid
 /// `VolumeHUD` swallowed and turned into one step of output volume.
 ///
 /// **How:** the HID interface is opened **seized**, so macOS never sees the key (no
-/// volume step, no volume HUD); each press toggles `kAudioDevicePropertyMute` on the
+/// volume step, no volume HUD); a single press toggles `kAudioDevicePropertyMute` on the
 /// receiver's **input** (`Wireless Mic Rx` has a settable one), which silences the voice
 /// for everything that records it — Zoom/Teams, Krisp, Whisper, Walkie Talkie. Then the
 /// HUD: the volume square's glass at the same spot — a red `mic.slash.fill` that stays up
 /// while muted, then `mic.fill` for 1.5 s when the voice is back.
 /// If the seize is refused it listens unseized (the volume step comes back) and says so.
+///
+/// **Two presses = ChatGPT's voice, on / off** (the same evening, Victor: *"click 2x pe
+/// link să pornească, click 2x din nou să oprească chatgpt"*): a second press within
+/// `DjiLinkButtonPolicy.doubleWindow` asks Walkie Talkie for what its 🔽 ← does
+/// (`POST /test/chat-voice` on 8917–8919 — the Codex window, a new voice chat, or the
+/// end of the one that is on). The price is that **a single press mutes
+/// `doubleWindow` later**: it has to wait to learn it was not the first of two.
 ///
 /// The audio interfaces stay CoreAudio's and vendor interface #6 stays
 /// `DjiReceiverMonitor`'s; this touches neither. Test: `GET /test/dji/link-press`.
@@ -41,7 +48,7 @@ final class DjiLinkButton {
             guard DjiLinkButtonPolicy.isPress(usagePage: IOHIDElementGetUsagePage(element),
                                               usage: IOHIDElementGetUsage(element),
                                               value: IOHIDValueGetIntegerValue(value)) else { return }
-            Unmanaged<DjiLinkButton>.fromOpaque(context!).takeUnretainedValue().pressed()
+            Unmanaged<DjiLinkButton>.fromOpaque(context!).takeUnretainedValue().press()
         }, Unmanaged.passUnretained(self).toOpaque())
         IOHIDManagerScheduleWithRunLoop(mgr, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         var result = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
@@ -62,11 +69,50 @@ final class DjiLinkButton {
         }
     }
 
-    /// One press, from the receiver or the test hook. Main thread.
+    /// A press on the receiver: one mutes (once `doubleWindow` has passed with no
+    /// second), two toggle ChatGPT's voice. Main thread.
+    func press(now: Date = Date()) {
+        switch DjiLinkButtonPolicy.onPress(now: now, last: lastPress, waitingForSecond: pendingSingle != nil) {
+        case .bounce:
+            return
+        case .second:
+            lastPress = now
+            pendingSingle?.cancel()
+            pendingSingle = nil
+            toggleChatVoice()
+        case .first:
+            lastPress = now
+            let work = DispatchWorkItem { [weak self] in
+                self?.pendingSingle = nil
+                self?.pressed()
+            }
+            pendingSingle = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + DjiLinkButtonPolicy.doubleWindow, execute: work)
+        }
+    }
+
+    private var pendingSingle: DispatchWorkItem?
+
+    /// Two presses: what Walkie Talkie's 🔽 ← does. First port that answers wins.
     @discardableResult
-    func pressed(now: Date = Date()) -> String {
-        guard DjiLinkButtonPolicy.accepts(now: now, last: lastPress) else { return stateJSON() }
-        lastPress = now
+    func toggleChatVoice(ports: [Int] = [8917, 8918, 8919]) -> String {
+        guard let port = ports.first, let url = URL(string: "http://127.0.0.1:\(port)/test/chat-voice") else {
+            overlayError("🎙️ DJI link button ×2: Walkie Talkie did not answer on 8917–8919 — ChatGPT's voice not toggled")
+            return "{\"asked\":false}"
+        }
+        if ports.count == 3 { overlayInfo("🎙️ DJI link button ×2 → ChatGPT voice on / off (asking Walkie Talkie)") }
+        var request = URLRequest(url: url, timeoutInterval: 2)
+        request.httpMethod = "POST"
+        URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
+            guard (response as? HTTPURLResponse)?.statusCode != 200 else { return }
+            DispatchQueue.main.async { self?.toggleChatVoice(ports: Array(ports.dropFirst())) }
+        }.resume()
+        return "{\"asked\":true}"
+    }
+
+    /// One press, decided: the mute toggles and the square shows. Also the test hook.
+    @discardableResult
+    func pressed() -> String {
         guard let device = MicInputMute.receiver() else {
             overlayError("🎙️ DJI link button pressed, but no \(MicInputMute.receiverName) input to mute")
             return stateJSON()
@@ -123,16 +169,24 @@ enum DjiLinkButtonPolicy {
     /// Consumer page, Volume Increment: what the link button sends.
     static let usagePage: UInt32 = 12
     static let usage: UInt32 = 233
-    /// Two presses closer than this are one (a bouncing switch must not mute and unmute).
-    static let debounce: TimeInterval = 0.25
+    /// Two reports closer than this are one press (a bouncing switch).
+    static let debounce: TimeInterval = 0.04
+    /// A second press within this of the first makes a double; a single press acts
+    /// once it has passed.
+    static let doubleWindow: TimeInterval = 0.4
+
+    enum Press: Equatable { case bounce, first, second }
+
+    /// What a press is, given the last one and whether a first is still waiting.
+    static func onPress(now: Date, last: Date, waitingForSecond: Bool) -> Press {
+        let gap = now.timeIntervalSince(last)
+        if gap < debounce { return .bounce }
+        return waitingForSecond && gap <= doubleWindow ? .second : .first
+    }
 
     /// The key going down; the release (value 0) a millisecond later is nothing.
     static func isPress(usagePage page: UInt32, usage u: UInt32, value: Int) -> Bool {
         page == usagePage && u == usage && value != 0
-    }
-
-    static func accepts(now: Date, last: Date) -> Bool {
-        now.timeIntervalSince(last) >= debounce
     }
 
     /// The struck-through microphone stays up while muted; the live one leaves by itself.

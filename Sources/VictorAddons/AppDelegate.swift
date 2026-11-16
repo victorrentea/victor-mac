@@ -846,10 +846,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 // The receiver's link button, as a press on it: toggles the input mute, shows the square.
                 overlayInfo("🎙️ test hook: simulating a press on the receiver's link button")
                 return self.djiLinkButton.pressed()
+            case "link-double":
+                // Two presses on it: Walkie Talkie's 🔽 ← (ChatGPT's voice on / off).
+                overlayInfo("🎙️ test hook: simulating two presses on the receiver's link button")
+                return self.djiLinkButton.toggleChatVoice()
             case "link-button":
                 return self.djiLinkButton.stateJSON()
             default:
-                return "{\"error\":\"kind is battery, link-lost, link-back, no-tx, no-tx-off, link-press or link-button\"}"
+                return "{\"error\":\"kind is battery, link-lost, link-back, no-tx, no-tx-off, link-press, link-double or link-button\"}"
             }
             return self.djiReceiver.stateJSON()
         }
