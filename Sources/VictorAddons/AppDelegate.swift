@@ -3114,7 +3114,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             ScreenshotManager.sessionFolder = nil
         }
         menuBarManager.setJoinLinkEnabled(true)
-        if showJoinLink { showSessionJoinBanner() }
+        if showJoinLink {
+            showSessionJoinBanner()
+            // 🧠 A session just started: the room's attention is at 100%. Not on
+            // the daemon's re-announce after a restart — that would refill mid-talk.
+            brainBattery?.refillNow()
+        }
     }
 
     /// The session's Interact link, persistent, on the projected retina.

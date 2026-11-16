@@ -210,8 +210,9 @@ enum BrainBatteryIcon {
 /// room's remaining attention is read at a glance, never behind a click.
 ///
 /// Refills by itself when a ☕ break ends (`breakEndedAt`, the same instant
-/// ⏱️ Resumed counts from); **Refill now** in its menu covers the start of the
-/// day or a break taken without the timer. Shown while 👩🏻‍💻 Extras ›
+/// ⏱️ Resumed counts from) and when the trainer starts a training-assistant
+/// session (`handleSessionStarted`); **Refill now** in its menu covers a break
+/// taken without the timer. Shown while 👩🏻‍💻 Extras ›
 /// 🧠 Show Brain Battery is ticked (default on) — and even then only from the
 /// end of a break until 3 h after it (`BrainEnergy.staleAfter`); the next
 /// break's end brings it back.
@@ -290,7 +291,9 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         statusItem?.button?.toolTip = "Brain battery: " + BrainEnergy.describe(state)
     }
 
-    @objc private func refillNow() {
+    /// Full again, as of now: **Refill now**, and a training session the trainer
+    /// has just started — the room walks in fresh (Victor, 2026-11-16).
+    @objc func refillNow() {
         BrainBatterySettings.refilledAt = Date()
         refresh()
     }
