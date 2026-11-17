@@ -72,7 +72,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     // every /ping through the proxy, so it keeps its own clock.
     private var pptMonitor: PowerPointMonitor?
     private var slidesSeen: SlidesSeenRecorder?
-    private let spotlightAnchors = SpotlightAnchors()
+    private let driveSpotlightKeeper = DriveSpotlightKeeper()
     private var driveShareCache: GoogleDriveShareCache?
     private var portKiller: PortKiller?
     private var whisperManager: WhisperProcessManager?
@@ -2345,8 +2345,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         let savedBadge = PowerPointSavedBadge()
         pptMonitor.onSample = { slidesSeen.consume($0); autoSave.consume($0); savedBadge.consume($0) }
         self.slidesSeen = slidesSeen
-        // ⚓ Google Drive's upload hard link knocks saved files out of Spotlight; see SpotlightAnchors.
-        spotlightAnchors.start()
+        // ⚓ Google Drive's upload hard link knocks saved files out of Spotlight; see DriveSpotlightKeeper.
+        driveSpotlightKeeper.start()
         pptMonitor.start()
         self.pptMonitor = pptMonitor
 
