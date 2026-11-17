@@ -152,7 +152,11 @@ enum BrainBatteryIcon {
     static let green = NSColor(srgbRed: 0.20, green: 0.78, blue: 0.35, alpha: 1)
     static let yellow = NSColor(srgbRed: 1.0, green: 0.80, blue: 0.0, alpha: 1)
     static let alarmRed = NSColor(srgbRed: 1.0, green: 0.23, blue: 0.19, alpha: 1)
-    static let size = NSSize(width: 28, height: 16)
+    /// Wide enough for the half brain (`halfBrainWidth`) left of the battery body.
+    static let size = NSSize(width: 36, height: 16)
+    /// The left half of the brain, its cut side glued to the outline's left edge
+    /// (Victor, 2026-11-17): the battery reads as the other half of the brain.
+    static let halfBrainHeight: CGFloat = 13
 
     static func fillColor(_ charge: BrainEnergy.Charge) -> NSColor {
         switch charge {
@@ -184,7 +188,19 @@ enum BrainBatteryIcon {
         // Measured off the system battery on the 2× menu bar (2026-11-12): a
         // 23×12 pt body, a 1 pt outline of white (black in light mode) at 45%,
         // a 1 pt gap, then the fill — inset 2 pt, so 8 pt tall.
-        let body = NSRect(x: 1, y: 2, width: 23, height: 12)
+        let halfBrain = brain(NSColor.labelColor.withAlphaComponent(0.85))
+        let halfW = (halfBrain.map { $0.size.width * halfBrainHeight / $0.size.height } ?? 0) / 2
+        let body = NSRect(x: (halfW + 1).rounded(), y: 2, width: 23, height: 12)
+        if let halfBrain {
+            // Drawn whole, centred on the body's left edge, then clipped to the
+            // left of it: only the half that sticks out shows, flush with the outline.
+            let rect = NSRect(x: body.minX - halfW, y: body.midY - halfBrainHeight / 2,
+                              width: halfW * 2, height: halfBrainHeight)
+            NSGraphicsContext.saveGraphicsState()
+            NSRect(x: 0, y: 0, width: body.minX, height: size.height).clip()
+            halfBrain.draw(in: rect)
+            NSGraphicsContext.restoreGraphicsState()
+        }
         let nub = NSRect(x: body.maxX + 1, y: body.midY - 2, width: 1.5, height: 4)
         let outline = NSBezierPath(roundedRect: body.insetBy(dx: 0.5, dy: 0.5), xRadius: 3.5, yRadius: 3.5)
         let inner = body.insetBy(dx: 2, dy: 2)
