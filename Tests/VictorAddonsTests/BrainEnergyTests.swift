@@ -22,6 +22,21 @@ final class BrainEnergyTests: XCTestCase {
         XCTAssertEqual(BrainEnergy.state(reference: t0, now: t0 + 90 * 60), .depleted(overdue: 15 * 60))
     }
 
+    /// After lunch the battery lasts an hour; after a coffee break, or a refill
+    /// after lunch, the usual 75 min.
+    func testAfterLunchItLastsOnlyAnHour() {
+        XCTAssertTrue(BrainEnergy.isLunch(breakStartedAt: t0 - 60 * 60, endedAt: t0))
+        XCTAssertTrue(BrainEnergy.isLunch(breakStartedAt: t0 - 30 * 60, endedAt: t0))
+        XCTAssertFalse(BrainEnergy.isLunch(breakStartedAt: t0 - 15 * 60, endedAt: t0))
+        XCTAssertFalse(BrainEnergy.isLunch(breakStartedAt: nil, endedAt: t0))
+
+        let afterLunch = BrainEnergy.span(reference: t0, lunchEndedAt: t0)
+        XCTAssertEqual(afterLunch, 60 * 60)
+        XCTAssertEqual(BrainEnergy.state(reference: t0, now: t0 + 60 * 60, span: afterLunch), .depleted(overdue: 0))
+        XCTAssertEqual(BrainEnergy.span(reference: t0 + 600, lunchEndedAt: t0), 75 * 60)   // refilled since
+        XCTAssertEqual(BrainEnergy.span(reference: t0, lunchEndedAt: nil), 75 * 60)
+    }
+
     func testNoReferenceIsIdle() {
         XCTAssertEqual(BrainEnergy.state(reference: nil, now: t0), .idle)
     }

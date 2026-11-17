@@ -183,6 +183,15 @@ final class BreakTimerController {
     /// "Resumed Xm ago" clock (time since the last break ended).
     var onEnded: (() -> Void)?
 
+    /// When the break now ending began — read in `onEnded` to tell lunch from a
+    /// coffee break by how long it really lasted (🧠 `BrainEnergy.isLunch`).
+    /// Persisted, so a restart in the middle of lunch still knows it was lunch.
+    private static let kBreakStartedAt = "BreakTimer.breakStartedAt"
+    private(set) var breakStartedAt: Date? {
+        get { UserDefaults.standard.object(forKey: Self.kBreakStartedAt) as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: Self.kBreakStartedAt) }
+    }
+
     /// Fired the moment the ☕-started "UNTIL BREAK" watch hits zero — the room
     /// voted a break in and it is now due, so the next thing Victor does is pick
     /// its length. Fired at zero, not at the close ~2 gongs later.
@@ -197,6 +206,13 @@ final class BreakTimerController {
     /// the pop that asked for it. Ignored when a window is already up (a re-click
     /// must not fly the running countdown around the screen).
     func start(minutes: Int, title: String = "BREAK", sizeScale: CGFloat = 1.0, zoomFrom: CGPoint? = nil) {
+        // A break begins when one was not already up: a fresh window, or the
+        // ☕ "UNTIL BREAK" watch turned into the break itself. A re-click that
+        // shortens or lengthens a running break keeps its start (🧠 lunch test).
+        if BreakTimerModel.endsABreak(title: title),
+           panel == nil || !BreakTimerModel.endsABreak(title: titleText) {
+            breakStartedAt = Date()
+        }
         epoch += 1
         skipBlackoutOnClose = false
         ScreenBlackout.shared.dismiss()        // a new break wins over a previous close's blackout

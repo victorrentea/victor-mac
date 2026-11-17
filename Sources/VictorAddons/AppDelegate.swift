@@ -1957,7 +1957,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         breakTimer.onEnded = { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.menuBarManager.breakEndedAt = Date()
+                let endedAt = Date()
+                self.menuBarManager.breakEndedAt = endedAt
+                BrainBatterySettings.lunchEndedAt =
+                    BrainEnergy.isLunch(breakStartedAt: self.breakTimer.breakStartedAt, endedAt: endedAt) ? endedAt : nil
                 self.brainBattery?.refresh()
                 self.scheduleBreakReminder()
                 self.promptGroupPhotoAtBreakEndIfDue()

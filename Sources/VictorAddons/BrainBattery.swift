@@ -9,6 +9,26 @@ import Foundation
 /// how long the room has been running on nothing — that is when it blinks red.
 enum BrainEnergy {
     static let defaultSpan: TimeInterval = 75 * 60
+    /// After lunch the room fades faster — an hour, not an hour and a quarter
+    /// (Victor, 2026-11-17: *"după pauza de masă la doar o oră, că mereu eu mor"*).
+    static let afterLunchSpan: TimeInterval = 60 * 60
+    /// A break that really lasted this long was lunch: the 🍽️ rows of the break
+    /// menu start at 30 min, every ☕ row stops at 15.
+    static let lunchMinLength: TimeInterval = 30 * 60
+
+    static func isLunch(breakStartedAt: Date?, endedAt: Date) -> Bool {
+        guard let breakStartedAt else { return false }
+        return endedAt.timeIntervalSince(breakStartedAt) >= lunchMinLength
+    }
+
+    /// How long the battery lasts from `reference`: an hour when it was filled
+    /// by the end of lunch, 75 min otherwise — a **Refill now** after lunch
+    /// counts as a normal refill.
+    static func span(reference: Date?, lunchEndedAt: Date?) -> TimeInterval {
+        guard let reference, let lunchEndedAt,
+              abs(reference.timeIntervalSince(lunchEndedAt)) < 1 else { return defaultSpan }
+        return afterLunchSpan
+    }
     /// Three hours after the last break the battery is no longer telling anyone
     /// anything — the day is over, or lunch ran long — so it goes idle, which
     /// **hides** the item, until the next break ends (Victor, 2026-11-12).
@@ -116,6 +136,16 @@ enum BrainBatterySettings {
     static let enabledKey = "BrainBattery.enabled"
     static let refilledAtKey = "BrainBattery.refilledAt"
     static let hiddenAtKey = "BrainBattery.hiddenAt"
+    static let lunchEndedAtKey = "BrainBattery.lunchEndedAt"
+
+    /// The end of the last break if it was lunch, else nil (`BrainEnergy.span`).
+    static var lunchEndedAt: Date? {
+        get {
+            let t = UserDefaults.standard.double(forKey: lunchEndedAtKey)
+            return t > 0 ? Date(timeIntervalSince1970: t) : nil
+        }
+        set { UserDefaults.standard.set(newValue?.timeIntervalSince1970 ?? 0, forKey: lunchEndedAtKey) }
+    }
 
     /// 👩🏻‍💻 Extras › 🧠 Show Brain Battery — on by default.
     static var isEnabled: Bool {
@@ -268,7 +298,9 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         let now = Date()
         let reference = BrainEnergy.reference(breakEndedAt: breakEndedAt(),
                                               refilledAt: BrainBatterySettings.refilledAt, now: now)
-        state = BrainEnergy.state(reference: reference, now: now)
+        state = BrainEnergy.state(reference: reference, now: now,
+                                  span: BrainEnergy.span(reference: reference,
+                                                         lunchEndedAt: BrainBatterySettings.lunchEndedAt))
         if BrainEnergy.charge(state) == .blinkingRed {
             if blinkTimer == nil {
                 blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
