@@ -144,8 +144,8 @@ enum BrainBatterySettings {
 /// The picture: drawn to read as **the macOS battery** sitting next to it — a
 /// thin translucent rounded outline, a faint nub, a rounded fill inset from it —
 /// with the fill in the system battery's own colours (`BrainEnergy.charge`:
-/// green, yellow, red) and a **line-drawn brain** on the body: white over the
-/// charge left, grey over the part spent. The outline never changes colour, like
+/// green, yellow, red) and the left half of a **line-drawn brain** glued to the
+/// body's left edge — nothing drawn on the body itself. The outline never changes colour, like
 /// the system's; at 5% or less only a thin red sliver at the left blinks — the
 /// way macOS shows a battery about to die (`blinkOn`, toggled by the caller).
 enum BrainBatteryIcon {
@@ -226,23 +226,6 @@ enum BrainBatteryIcon {
             NSBezierPath(roundedRect: NSRect(x: inner.minX, y: inner.minY, width: fillWidth, height: inner.height),
                          xRadius: 1.75, yRadius: 1.75).fill()
         }
-
-        guard let ctx = NSGraphicsContext.current?.cgContext,
-              let lit = brain(.white), let spent = brain(NSColor.labelColor.withAlphaComponent(0.55)) else { return }
-        // Scaled to sit inside the outline: 9 pt tall in the 12 pt body.
-        let h: CGFloat = 9, w = lit.size.width * h / lit.size.height
-        let rect = NSRect(x: body.midX - w / 2, y: body.midY - h / 2, width: w, height: h)
-        let splitX = inner.minX + fillWidth
-        ctx.saveGState()
-        ctx.clip(to: NSRect(x: 0, y: 0, width: splitX, height: size.height))
-        // A hair of shadow keeps the white line readable on the yellow fill.
-        ctx.setShadow(offset: .zero, blur: 0.75, color: NSColor.black.withAlphaComponent(0.6).cgColor)
-        lit.draw(in: rect)
-        ctx.restoreGState()
-        ctx.saveGState()
-        ctx.clip(to: NSRect(x: splitX, y: 0, width: size.width - splitX, height: size.height))
-        spent.draw(in: rect)
-        ctx.restoreGState()
     }
 }
 
