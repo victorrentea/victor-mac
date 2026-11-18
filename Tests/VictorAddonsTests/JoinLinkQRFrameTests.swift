@@ -28,3 +28,40 @@ final class JoinLinkQRFrameTests: XCTestCase {
         XCTAssertTrue(tall.contains(qr))
     }
 }
+
+final class JoinLinkCompactLayoutTests: XCTestCase {
+    // The laptop: 1728 wide, a 33 pt bar, status icons from x = 1172.
+    private let retina = NSRect(x: 0, y: 0, width: 1728, height: 1117)
+
+    func testCompactLinkSitsCentredInTheMenuBar() {
+        let l = JoinLinkBanner.compactLayout(screen: retina, barHeight: 33, statusItemsMinX: 1172, widthPerPoint: 18)
+
+        XCTAssertEqual(l.fontSize, 19)
+        XCTAssertEqual(l.frame.midX, retina.midX, accuracy: 1)
+        XCTAssertEqual(l.frame.maxY, retina.maxY - 2)
+        XCTAssertEqual(l.frame.minY, retina.maxY - 33 + 2)
+    }
+
+    func testCompactLinkMovesLeftRatherThanCoverAStatusIcon() {
+        let l = JoinLinkBanner.compactLayout(screen: retina, barHeight: 33, statusItemsMinX: 900, widthPerPoint: 18)
+
+        XCTAssertEqual(l.fontSize, 19)
+        XCTAssertEqual(l.frame.maxX, 900 - JoinLinkBanner.compactGap)
+    }
+
+    func testCompactLinkShrinksOnlyWhenTheWholeBarIsTooNarrow() {
+        let l = JoinLinkBanner.compactLayout(screen: retina, barHeight: 33, statusItemsMinX: 300, widthPerPoint: 18)
+
+        XCTAssertLessThan(l.fontSize, 19)
+        XCTAssertGreaterThanOrEqual(l.frame.minX, retina.minX + JoinLinkBanner.compactGap)
+        XCTAssertLessThanOrEqual(l.frame.maxX, 300 - JoinLinkBanner.compactGap)
+    }
+
+    func testCompactLinkOnASecondScreenStaysOnIt() {
+        let right = NSRect(x: 1728, y: 0, width: 1920, height: 1080)
+        let l = JoinLinkBanner.compactLayout(screen: right, barHeight: 24, statusItemsMinX: nil, widthPerPoint: 18)
+
+        XCTAssertEqual(l.frame.midX, right.midX, accuracy: 1)
+        XCTAssertTrue(right.contains(l.frame))
+    }
+}

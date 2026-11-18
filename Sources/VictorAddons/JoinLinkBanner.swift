@@ -7,15 +7,23 @@ import Foundation
 /// bottom-right corner is clicked (or its menu row is clicked again).
 /// A click on the QR blows it up to fill the screen under the link, for the back
 /// of the room; a second click sends it back to its corner.
+/// A click on the link itself shrinks it into the middle of the menu bar — no QR,
+/// no ✕, clear of the status icons on the right — and a click there brings it
+/// back large. Every show starts large.
 class JoinLinkBanner: NSPanel {
     private let urlLabel: NSTextField
+    private let clickView = BannerClickView()
     private var bannerShowing: Bool = false
+    private(set) var isCompact = false
+    private var shownUrl = ""
+    private var shownUppercase = false
+    /// While compact: re-fits the pill when a status icon comes or goes.
+    private var compactRefit: Timer?
     /// The session's Interact link, as opposed to a clipboard link — which of
     /// the two menu rows carries the ✓.
     private(set) var isSessionLink = false
 
     private var targetScreen: NSScreen
-    private let menuBarHeight: CGFloat = 25
     // The link fills the screen edge to edge: the font is scaled up (or down)
     // until the text spans the width minus this gutter, and the banner's
     // height follows the text.
@@ -56,10 +64,15 @@ class JoinLinkBanner: NSPanel {
         )
 
         self.level = .statusBar
-        self.backgroundColor = NSColor.black.withAlphaComponent(0.7)
+        self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = false
-        self.ignoresMouseEvents = true  // clicks pass through; we poll for hover
+        // A click on the link flips large ⇄ compact (the strip hides what is
+        // under it anyway, behind 70 % black).
+        clickView.wantsLayer = true
+        clickView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
+        clickView.onClick = { [weak self] in self?.toggleCompact() }
+        self.contentView = clickView
 
         urlLabel.isBordered = false
         urlLabel.isEditable = false
@@ -69,7 +82,7 @@ class JoinLinkBanner: NSPanel {
         urlLabel.lineBreakMode = .byTruncatingMiddle
         urlLabel.allowsEditingTextAttributes = true
 
-        self.contentView?.addSubview(urlLabel)
+        clickView.addSubview(urlLabel)
 
         setupQRPanel()
         setupClosePanel()
@@ -127,7 +140,49 @@ class JoinLinkBanner: NSPanel {
     ///   whose paths are case-sensitive and must be shown verbatim.
     /// - Parameter sessionLink: this is the session's Interact link, not a clipboard link.
     func show(url: String, uppercaseLastSegment: Bool = false, sessionLink: Bool = false) {
-        let trimmedUrl = url.trimmingCharacters(in: .whitespaces)
+        shownUrl = url.trimmingCharacters(in: .whitespaces)
+        shownUppercase = uppercaseLastSegment
+        isCompact = false
+        stopCompactRefit()
+        layoutLarge()
+
+        self.alphaValue = 1.0
+        self.orderFrontRegardless()
+        bannerShowing = true
+        isSessionLink = sessionLink
+
+        // Every show starts with the QR small, in its corner.
+        isQRExpanded = false
+        showQR(for: shownUrl)
+        showClose()
+    }
+
+    /// Large ⇄ compact over the menu bar.
+    func toggleCompact() {
+        guard bannerShowing else { return }
+        isCompact.toggle()
+        if isCompact {
+            hideQR(keepExpansion: true)
+            closePanel?.orderOut(nil)
+            layoutCompact()
+            startCompactRefit()
+        } else {
+            stopCompactRefit()
+            layoutLarge()
+            showQR(for: shownUrl)
+            showClose()
+        }
+    }
+
+    private func showClose() {
+        // After the banner, so the ✕ sits on top of it.
+        closePanel?.setFrame(BannerClosePanel.frame(inBanner: frame), display: false)
+        closePanel?.alphaValue = 1.0
+        closePanel?.orderFrontRegardless()
+    }
+
+    /// The link edge to edge across the screen, right under the menu bar.
+    private func layoutLarge() {
         let screenWidth = targetScreen.frame.width
         let maxWidth = screenWidth - horizontalPadding * 2
         // A short clipboard URL would otherwise grow to half the screen.
@@ -135,43 +190,127 @@ class JoinLinkBanner: NSPanel {
 
         // Monospaced text scales linearly with the font, so one measurement at a
         // reference size gives the size that spans exactly `maxWidth`.
-        let referenceSize: CGFloat = 100
-        let measured = buildAttributedString(url: trimmedUrl, fontSize: referenceSize, uppercaseLastSegment: uppercaseLastSegment).size().width
+        let measured = textWidth(atFontSize: Self.referenceFontSize)
         let fontSize = measured > 0
-            ? min(maxFontSize, max(24, floor(referenceSize * maxWidth / measured)))
+            ? min(maxFontSize, max(24, floor(Self.referenceFontSize * maxWidth / measured)))
             : 76
-        urlLabel.attributedStringValue = buildAttributedString(url: trimmedUrl, fontSize: fontSize, uppercaseLastSegment: uppercaseLastSegment)
+        urlLabel.attributedStringValue = buildAttributedString(url: shownUrl, fontSize: fontSize, uppercaseLastSegment: shownUppercase)
         urlLabel.sizeToFit()
 
         let fittedWidth = min(ceil(urlLabel.frame.width), screenWidth)
         let textHeight = ceil(urlLabel.frame.height)
         let bannerHeight = textHeight + verticalPadding * 2
         let bannerX = targetScreen.frame.origin.x
-        let bannerY = targetScreen.frame.origin.y + targetScreen.frame.height - menuBarHeight - bannerHeight
+        let bannerY = targetScreen.frame.maxY - Self.menuBarHeight(of: targetScreen) - bannerHeight
 
-        let frame = NSRect(x: bannerX, y: bannerY, width: screenWidth, height: bannerHeight)
-        self.setFrame(frame, display: false)
-
+        self.setFrame(NSRect(x: bannerX, y: bannerY, width: screenWidth, height: bannerHeight), display: true)
+        clickView.layer?.cornerRadius = 0
         urlLabel.frame = NSRect(x: (screenWidth - fittedWidth) / 2, y: verticalPadding, width: fittedWidth, height: textHeight)
+    }
 
-        self.alphaValue = 1.0
-        self.orderFrontRegardless()
-        bannerShowing = true
-        isSessionLink = sessionLink
+    /// A pill in the middle of the menu bar, left of the status icons. Under the
+    /// notch on the laptop's own panel, but whole on a projector or a share.
+    private func layoutCompact() {
+        let bar = Self.menuBarHeight(of: targetScreen)
+        let layout = Self.compactLayout(
+            screen: targetScreen.frame,
+            barHeight: bar,
+            statusItemsMinX: Self.statusItemsMinX(on: targetScreen, barHeight: bar),
+            widthPerPoint: textWidth(atFontSize: Self.referenceFontSize) / Self.referenceFontSize)
+        urlLabel.attributedStringValue = buildAttributedString(url: shownUrl, fontSize: layout.fontSize, uppercaseLastSegment: shownUppercase)
+        urlLabel.sizeToFit()
+        let textW = ceil(urlLabel.frame.width), textH = ceil(urlLabel.frame.height)
+        self.setFrame(layout.frame, display: true)
+        clickView.layer?.cornerRadius = 6
+        urlLabel.frame = NSRect(x: (layout.frame.width - textW) / 2, y: (layout.frame.height - textH) / 2,
+                                width: textW, height: textH)
+    }
 
-        // Show QR code
-        showQR(for: trimmedUrl)
+    private func startCompactRefit() {
+        stopCompactRefit()
+        compactRefit = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            guard let self, self.isCompact, self.bannerShowing else { return }
+            self.layoutCompact()
+        }
+    }
 
-        // After the banner, so the ✕ sits on top of it.
-        closePanel?.setFrame(BannerClosePanel.frame(inBanner: frame), display: false)
-        closePanel?.alphaValue = 1.0
-        closePanel?.orderFrontRegardless()
+    private func stopCompactRefit() {
+        compactRefit?.invalidate()
+        compactRefit = nil
+    }
+
+    private static let referenceFontSize: CGFloat = 100
+
+    private func textWidth(atFontSize size: CGFloat) -> CGFloat {
+        buildAttributedString(url: shownUrl, fontSize: size, uppercaseLastSegment: shownUppercase).size().width
+    }
+
+    // MARK: - Compact geometry
+
+    static let compactGap: CGFloat = 8
+    static let compactPadding: CGFloat = 10
+
+    /// Where the compact pill goes and how big its text is. Centred on the screen;
+    /// pushed left when it would reach the status icons, shrunk only when even the
+    /// whole bar left of them is too narrow. `widthPerPoint` is the text width per
+    /// point of font size (monospaced text scales linearly).
+    static func compactLayout(screen: NSRect, barHeight: CGFloat, statusItemsMinX: CGFloat?,
+                              widthPerPoint: CGFloat) -> (frame: NSRect, fontSize: CGFloat) {
+        let rightLimit = (statusItemsMinX ?? screen.maxX) - compactGap
+        let leftLimit = screen.minX + compactGap
+        var fontSize = floor(barHeight * 0.6)
+        var width = ceil(widthPerPoint * fontSize) + compactPadding * 2
+        if width > rightLimit - leftLimit, widthPerPoint > 0 {
+            fontSize = max(9, floor((rightLimit - leftLimit - compactPadding * 2) / widthPerPoint))
+            width = ceil(widthPerPoint * fontSize) + compactPadding * 2
+        }
+        var x = screen.midX - width / 2
+        if x + width > rightLimit { x = rightLimit - width }
+        if x < leftLimit { x = leftLimit }
+        let inset: CGFloat = 2
+        let frame = NSRect(x: x, y: screen.maxY - barHeight + inset, width: width, height: barHeight - inset * 2)
+        return (frame, fontSize)
+    }
+
+    /// The menu bar's height on that screen: 24 pt classic, ~33 pt with a notch.
+    static func menuBarHeight(of screen: NSScreen) -> CGFloat {
+        let measured = screen.frame.maxY - screen.visibleFrame.maxY
+        if measured > 0 { return measured }
+        // Auto-hidden menu bar: the notch still sets the band.
+        return max(screen.safeAreaInsets.top, 24)
+    }
+
+    /// The left edge (Cocoa x) of the leftmost status icon on that screen's menu
+    /// bar, nil if none is found. Status icons are layer-25 windows lying in the
+    /// bar's band; ours are left out.
+    static func statusItemsMinX(on screen: NSScreen, barHeight: CGFloat) -> CGFloat? {
+        guard let primary = NSScreen.screens.first,
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        else { return nil }
+        // Window bounds are in global display coordinates: origin top-left of the primary.
+        let bandTop = primary.frame.maxY - screen.frame.maxY
+        let band = CGRect(x: screen.frame.minX, y: bandTop, width: screen.frame.width, height: barHeight)
+        let own = Set(NSApp.windows.compactMap { $0 is JoinLinkBanner ? $0.windowNumber : nil })
+        var minX: CGFloat?
+        for w in list {
+            guard (w[kCGWindowLayer as String] as? Int) == Int(CGWindowLevelForKey(.statusWindow)),
+                  let number = w[kCGWindowNumber as String] as? Int, !own.contains(number),
+                  let dict = w[kCGWindowBounds as String] as? NSDictionary,
+                  let b = CGRect(dictionaryRepresentation: dict),
+                  b.width < screen.frame.width / 2,
+                  band.contains(CGPoint(x: b.midX, y: b.midY))
+            else { continue }
+            minX = min(minX ?? b.minX, b.minX)
+        }
+        return minX
     }
 
     func hide() {
         self.alphaValue = 0.0
         bannerShowing = false
         isSessionLink = false
+        isCompact = false
+        stopCompactRefit()
         self.orderOut(nil)
         hideQR()
         closePanel?.orderOut(nil)
@@ -179,8 +318,11 @@ class JoinLinkBanner: NSPanel {
 
     var bannerIsVisible: Bool { bannerShowing }
 
-    /// Where the ✕ is on screen, in Cocoa points; nil while the banner is down.
-    var closeButtonFrame: NSRect? { bannerShowing ? closePanel?.frame : nil }
+    /// Where the ✕ is on screen, in Cocoa points; nil while the banner is down or compact.
+    var closeButtonFrame: NSRect? { bannerShowing && !isCompact ? closePanel?.frame : nil }
+
+    /// Where the link is on screen (the strip, or the compact pill); nil while down.
+    var linkFrameOnScreen: NSRect? { bannerShowing ? frame : nil }
 
     // MARK: - QR code generation and display
 
@@ -189,9 +331,7 @@ class JoinLinkBanner: NSPanel {
 
         // Re-position against the current targetScreen so multi-monitor swaps
         // and screen-config changes after launch place the QR in the right corner.
-        // Every show starts small, in the corner.
-        isQRExpanded = false
-        qrPanel.setFrame(Self.qrFrame(screen: targetScreen.frame, banner: frame, expanded: false), display: false)
+        qrPanel.setFrame(Self.qrFrame(screen: targetScreen.frame, banner: frame, expanded: isQRExpanded), display: false)
 
         // Prepend https:// for the QR code so phones can open it directly
         let fullUrl = url.hasPrefix("http") ? url : "https://\(url)"
@@ -202,15 +342,16 @@ class JoinLinkBanner: NSPanel {
         qrPanel.orderFrontRegardless()
     }
 
-    private func hideQR() {
+    /// `keepExpansion`: going compact remembers the QR's size for the way back.
+    private func hideQR(keepExpansion: Bool = false) {
         qrPanel?.alphaValue = 0.0
         qrPanel?.orderOut(nil)
-        isQRExpanded = false
+        if !keepExpansion { isQRExpanded = false }
     }
 
     /// Corner ⇄ full screen under the link.
     func toggleQRSize() {
-        guard bannerShowing, let qrPanel = qrPanel else { return }
+        guard bannerShowing, !isCompact, let qrPanel = qrPanel else { return }
         isQRExpanded.toggle()
         let target = Self.qrFrame(screen: targetScreen.frame, banner: frame, expanded: isQRExpanded)
         NSAnimationContext.runAnimationGroup { context in
@@ -220,8 +361,8 @@ class JoinLinkBanner: NSPanel {
         }
     }
 
-    /// Where the QR is on screen, in Cocoa points; nil while the banner is down.
-    var qrFrameOnScreen: NSRect? { bannerShowing ? qrPanel?.frame : nil }
+    /// Where the QR is on screen, in Cocoa points; nil while the banner is down or compact.
+    var qrFrameOnScreen: NSRect? { bannerShowing && !isCompact ? qrPanel?.frame : nil }
 
     private func generateQRCode(from string: String) -> NSImage? {
         guard let data = string.data(using: .utf8),
@@ -306,6 +447,20 @@ final class BannerClosePanel: NSPanel {
         let button = BannerCloseButton(frame: NSRect(x: 0, y: 0, width: Self.size, height: Self.size))
         button.onClick = { [weak self] in self?.onClick?() }
         contentView = button
+    }
+}
+
+/// Hosts the link label and turns a click anywhere on the strip (or pill) into `onClick`.
+private final class BannerClickView: NSView {
+    var onClick: (() -> Void)?
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    // The label would otherwise swallow the click.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        frame.contains(point) ? self : nil
+    }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
     }
 }
 

@@ -1468,17 +1468,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             return "{\"state\":\"\(state)\",\"preferred\":\"\(AsusSide.preferred.rawValue)\""
                 + (banner.map { ",\"banner\":\"\($0)\"" } ?? "") + "}"
         }
-        // /test/join-banner[?show=1] — the Interact banner on the rightmost screen, off
-        // the projected retina and with no clipboard write; no `show` only reads.
+        // /test/join-banner[?show=1][&toggle=1] — the Interact banner on the rightmost
+        // screen, off the projected retina and with no clipboard write; `toggle` flips
+        // large ⇄ compact over the menu bar, as a click on the link does; neither only reads.
         // `close` is the ✕'s centre in global display coordinates, to aim a real click.
-        tabletServer?.onTestJoinBanner = { [weak self] show in
+        tabletServer?.onTestJoinBanner = { [weak self] show, toggle in
             guard let banner = self?.joinLinkBanner else { return "{\"error\":\"no banner\"}" }
             if show, let screen = NSScreen.physical.max(by: { $0.frame.maxX < $1.frame.maxX }) {
                 banner.setTargetScreen(screen)
                 banner.show(url: self?.participantUrl ?? "interact.victorrentea.ro/TEST42",
                             uppercaseLastSegment: true, sessionLink: true)
             }
-            var json = "{\"visible\":\(banner.bannerIsVisible)"
+            if toggle { banner.toggleCompact() }
+            var json = "{\"visible\":\(banner.bannerIsVisible),\"compact\":\(banner.isCompact)"
+            if let link = banner.linkFrameOnScreen {
+                let top = CGDisplayBounds(CGMainDisplayID()).height
+                json += ",\"link\":[\(Int(link.midX)),\(Int(top - link.midY))]"
+                    + ",\"linkFrame\":[\(Int(link.minX)),\(Int(top - link.maxY)),\(Int(link.width)),\(Int(link.height))]"
+            }
             if let close = banner.closeButtonFrame {
                 let top = CGDisplayBounds(CGMainDisplayID()).height
                 json += ",\"close\":[\(Int(close.midX)),\(Int(top - close.midY))]"

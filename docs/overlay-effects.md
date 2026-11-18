@@ -31,6 +31,18 @@ between this app and **Victor Effects**.
   **A click on the QR blows it up** to the largest square between the bottom of
   the screen and the link, a second click sends it back to its corner
   (`JoinLinkBanner.qrFrame`); every `show` starts small.
+  **A click on the link shrinks it into the menu bar** (2026-11-18): a pill
+  centred on the screen, as tall as the bar, with no QR and no ✕; a click on the
+  pill brings it back large, the QR at the size it had. Every `show` starts large.
+  The pill sits under the notch on the laptop's own panel, on purpose: a projector
+  or a Zoom share sees the whole bar. It never reaches the status icons on the
+  right: their left edge comes from the layer-25 windows in the bar's band
+  (`CGWindowListCopyWindowInfo`, owned by Control Centre on Tahoe), re-read every
+  2 s while compact. The pill moves left first and shrinks its font only when the
+  whole bar left of them is too narrow (`JoinLinkBanner.compactLayout`). The app
+  menus on the left are not avoided. The strip stopped being click-through for
+  this; it hides what is under it anyway. The large strip now sits under the
+  measured menu bar (33 pt with a notch), not under a fixed 25 pt.
   **The text fills the screen width** (2026-10-01): the font is scaled up *or*
   down until the URL spans the screen minus a 16 pt gutter, the banner is
   full-width and its height follows the text. Monospaced text scales linearly,
