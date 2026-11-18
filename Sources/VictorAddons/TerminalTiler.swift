@@ -97,6 +97,24 @@ enum TerminalTiler {
 
         // Last word: the keyboard goes back where it was.
         if let focused { AXUIElementPerformAction(focused, kAXRaiseAction as CFString) }
+
+        bringTerminalForward()
+    }
+
+    /// **The tile ends with Terminal as the frontmost app.** `kAXRaiseAction`
+    /// re-stacks windows *inside* Terminal but leaves whatever app was in front
+    /// (the editor ⌘⌃A was pressed from) in front of them, so the freshly tiled
+    /// terminals sat hidden behind it (2026-11-18: *"cmd-ctrl-a should bring
+    /// terminal app forward after tiling them"*). `AXFrontmost` rides on the same
+    /// Accessibility grant and is honoured for a background agent, where
+    /// `NSRunningApplication.activate` alone may be declined by macOS 14+'s
+    /// cooperative activation — so it goes first, with `activate` as the backup.
+    private static func bringTerminalForward() {
+        guard let app = NSRunningApplication
+            .runningApplications(withBundleIdentifier: terminalBundleID).first else { return }
+        let appEl = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetAttributeValue(appEl, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        if !app.isActive { app.activate(options: []) }
     }
 
     /// Terminal's key window, or nil.
