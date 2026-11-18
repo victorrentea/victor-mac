@@ -618,6 +618,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 self?.feedbackFormPublished(url: url, title: title) ?? "{\"ok\":false,\"reason\":\"app-gone\"}"
             }
         }
+        // 💬 A sibling app's pill (Victor Net's ✈️ "another roaming GB gone", 2026-11-18).
+        // On presence, so a notice that lands while he is away waits for him.
+        tabletServer?.onBanner = { [weak self] text, hold in
+            self?.statusBanner?.showOnPresence(text: text, sound: nil, visibleDuration: hold)
+        }
         tabletServer?.onLinkHide = { [weak self] in
             MainActor.assumeIsolated {
                 self?.joinLinkBanner?.hide()

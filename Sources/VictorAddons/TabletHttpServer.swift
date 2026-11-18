@@ -281,6 +281,9 @@ case testTerminalFont
         /// Take the banner back down (the robot's counterpart to pressing the
         /// menu item a second time).
         case linkHide
+        /// 💬 A sibling app's transient pill (`StatusBanner`, presence-gated): `?text=`, `?hold=` s.
+        /// Local only, like everything not on the tablet's list (`HttpAccessPolicy`).
+        case banner(text: String, hold: Double)
         /// 📝 Ask the Chrome extension to publish this session's feedback form.
         case feedbackForm(String?)
         /// Show the "Feedback form?" offer now, bypassing the 16:30 / 17:00
@@ -481,6 +484,8 @@ case testTerminalFont
     var onLinkPublish: ((String) -> String)?
     /// Hides the clipboard-link banner; returns JSON.
     var onLinkHide: (() -> String)?
+    /// `/banner` — Victor Net's "another roaming GB gone" (2026-11-18), or any sibling's.
+    var onBanner: ((String, Double) -> Void)?
     /// Asks Chrome to publish the feedback form; returns JSON.
     var onFeedbackForm: ((String?) -> String)?
     var onTestFeedbackReminder: (() -> Void)?
@@ -927,6 +932,15 @@ case testTerminalFont
             case .linkPublish(let url):
                 contentType = "application/json"
                 body = self.onLinkPublish?(url) ?? "{\"ok\":false,\"reason\":\"handler-missing\"}"
+            case .banner(let text, let hold):
+                contentType = "application/json"
+                if let onBanner = self.onBanner {
+                    DispatchQueue.main.async { onBanner(text, hold) }
+                    body = "{\"ok\":true}"
+                } else {
+                    body = "{\"ok\":false,\"reason\":\"handler-missing\"}"
+                    statusCode = 503
+                }
             case .linkHide:
                 contentType = "application/json"
                 body = self.onLinkHide?() ?? "{\"ok\":false,\"reason\":\"handler-missing\"}"
@@ -1307,6 +1321,11 @@ case testTerminalFont
                 return .linkPublish(url)
             }
             return .unknown
+        case "/banner":
+            // Capped: the pill is one line, and a sibling's bug must not paint a screenful.
+            let text = String((queryItems.first(where: { $0.name == "text" })?.value ?? "").prefix(120))
+            let hold = min(max(Double(queryItems.first(where: { $0.name == "hold" })?.value ?? "") ?? 6, 1), 30)
+            return text.isEmpty ? .unknown : .banner(text: text, hold: hold)
         case "/link/hide":
             return .linkHide
         case "/feedback-form/publish":
