@@ -150,7 +150,8 @@ final class SlidesSeenRecorder {
                 switch action {
                 case .qualified(let span):
                     pendingSnapshot = nil
-                    if let path = span.path {
+                    // A deck never saved has no file to copy, and must not be saved behind his back.
+                    if let path = span.path, PowerPointDeck.hasFile(path) {
                         // Unsaved edits are not on disk, and the copy is taken from disk: save first.
                         // Victor asked for it (2026-10-29), knowing Google Drive sometimes refuses a save.
                         if !sample.saved { PowerPointDeck.save(path, reason: "SlidesSeen") }

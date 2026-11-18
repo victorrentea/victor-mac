@@ -73,6 +73,10 @@ as PDF pages **exported by PowerPoint itself, links clickable** (`slides_seen.py
   deck (`decks.noindex/<sha256[:16]>.pptx`; unchanged size+mtime → no re-hash). **On close:** one
   JSON line in `log/<day>.jsonl` — start, end, seconds, deck, path, slide, slide_id,
   snapshot, presenting.
+- **Never a deck without a file** (`PowerPointDeck.hasFile`, the gate inside `save` itself):
+  a scripted `save` on a new "Presentation3" does not ask where — it writes a file named
+  after the first slide's title into PowerPoint's sandbox `Documents` and marks the deck
+  saved, so closing it no longer warns. A new deck was lost that way on 2026-11-18.
 - **Where:** `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/slides-seen/`,
   PowerPoint's own sandbox container — the only place PowerPoint opens and writes files
   driven by AppleScript **without "Grant File Access"** (it asks per file anywhere else,

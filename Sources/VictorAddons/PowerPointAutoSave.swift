@@ -13,8 +13,7 @@ struct PowerPointAutoSavePolicy {
 
     /// The path to save now, if any.
     mutating func consume(_ s: PowerPointSample, idle: TimeInterval) -> String? {
-        // PowerPoint's full name of a deck never saved is a bare "Presentation1": no file to save to.
-        guard !s.saved, let path = s.path, path.hasPrefix("/") else {
+        guard !s.saved, let path = s.path, PowerPointDeck.hasFile(path) else {
             dirtyPath = nil
             dirtySince = nil
             return nil
@@ -51,9 +50,16 @@ final class PowerPointAutoSave {
 }
 
 enum PowerPointDeck {
+    /// PowerPoint's full name of a deck never saved is a bare "Presentation1": no file behind it.
+    static func hasFile(_ path: String?) -> Bool { path?.hasPrefix("/") ?? false }
+
     /// Saves the open deck at `path`. A refused save raises nothing and `save` itself reports no
     /// error, measured on a locked file: only the deck still being unsaved afterwards tells.
     static func save(_ path: String, reason: String) {
+        // Scripted `save` on a deck never saved does not ask where: it writes a file named after
+        // the first slide's title into PowerPoint's sandbox and marks the deck saved, so closing
+        // it no longer warns (2026-11-18, a new deck lost that way through SlidesSeen).
+        guard hasFile(path) else { return }
         let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let script = """
         tell application "Microsoft PowerPoint"

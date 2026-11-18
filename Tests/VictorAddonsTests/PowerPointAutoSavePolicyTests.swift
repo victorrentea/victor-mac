@@ -41,6 +41,15 @@ final class PowerPointAutoSavePolicyTests: XCTestCase {
         XCTAssertNil(p.consume(s(240, path: nil), idle: 10))
     }
 
+    /// Every scripted save goes through this gate: SlidesSeen once saved a bare "Presentation3"
+    /// into the sandbox, and the new deck then closed without asking (2026-11-18).
+    func testOnlyADeckWithAFileCanBeSavedByScript() {
+        XCTAssertTrue(PowerPointDeck.hasFile("/d/a.pptx"))
+        XCTAssertFalse(PowerPointDeck.hasFile("Presentation3"))
+        XCTAssertFalse(PowerPointDeck.hasFile(""))
+        XCTAssertFalse(PowerPointDeck.hasFile(nil))
+    }
+
     func testSavingByHandRestartsTheClock() {
         var p = PowerPointAutoSavePolicy()
         _ = p.consume(s(0), idle: 10)
