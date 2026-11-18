@@ -44,13 +44,31 @@ enum BrainEnergy {
     }
 
     /// The moment the battery was last full: the later of the end of the last
-    /// break and a manual refill. One in the future (clock change) or older than
-    /// `staleAfter` counts as none.
+    /// break and a refill. One older than `staleAfter` counts as none, and so
+    /// does one in the future (clock change) — except a refill at most
+    /// `scheduledAhead` away, which is a session's scheduled start
+    /// (`sessionStart`): until then the battery waits full.
     static func reference(breakEndedAt: Date?, refilledAt: Date?, now: Date) -> Date? {
-        [breakEndedAt, refilledAt].compactMap { $0 }.filter { d in
+        func recent(_ d: Date, ahead: TimeInterval) -> Bool {
             let age = now.timeIntervalSince(d)
-            return age >= 0 && age <= staleAfter
-        }.max()
+            return age >= -ahead && age <= staleAfter
+        }
+        return [breakEndedAt.flatMap { recent($0, ahead: 0) ? $0 : nil },
+                refilledAt.flatMap { recent($0, ahead: scheduledAhead) ? $0 : nil }]
+            .compactMap { $0 }.max()
+    }
+
+    /// How far ahead a scheduled refill may sit: the longest wait `sessionStart` gives.
+    static let scheduledAhead: TimeInterval = 30 * 60
+
+    /// When a session started at `startedAt` really starts draining the room: the
+    /// next xx:00 or xx:30 on the local clock — or `startedAt` itself if it is
+    /// exactly one. The trainer presses Start a few minutes early, while people
+    /// are still walking in (Victor, 2026-11-18).
+    static func sessionStart(startedAt: Date, calendar: Calendar = .current) -> Date {
+        let c = calendar.dateComponents([.minute, .second, .nanosecond], from: startedAt)
+        let into = TimeInterval((c.minute ?? 0) % 30 * 60 + (c.second ?? 0)) + Double(c.nanosecond ?? 0) / 1e9
+        return into < 0.001 ? startedAt : startedAt + (30 * 60 - into)
     }
 
     /// Whether the item is on the menu bar: not when idle, and not after **Hide**
@@ -103,7 +121,9 @@ enum BrainEnergy {
     /// is left (or how long it has been empty), and when the battery was last full.
     static func lines(_ state: State, reference: Date?, now: Date) -> [String] {
         let started: String
-        if let reference {
+        if let reference, reference > now {
+            started = "starts in ~\(spoken(reference.timeIntervalSince(now)))"
+        } else if let reference {
             started = "started: \(ago(max(0, now.timeIntervalSince(reference))))"
         } else {
             started = "started: —"
@@ -240,7 +260,8 @@ enum BrainBatteryIcon {
 ///
 /// Refills by itself when a ☕ break ends (`breakEndedAt`, the same instant
 /// ⏱️ Resumed counts from) and when the trainer starts a training-assistant
-/// session (`handleSessionStarted`); **Refill now** in its menu covers a break
+/// session (`handleSessionStarted`) — draining only from the next xx:00 or
+/// xx:30, full until then; **Refill now** in its menu covers a break
 /// taken without the timer. Shown while 👩🏻‍💻 Extras ›
 /// 🧠 Show Brain Battery is ticked (default on) — and even then only from the
 /// end of a break until 3 h after it (`BrainEnergy.staleAfter`); the next
@@ -326,10 +347,16 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         statusItem?.button?.toolTip = summary.joined(separator: "\n")
     }
 
-    /// Full again, as of now: **Refill now**, and a training session the trainer
-    /// has just started — the room walks in fresh (Victor, 2026-11-16).
+    /// Full again, as of now: **Refill now**.
     @objc func refillNow() {
         BrainBatterySettings.refilledAt = Date()
+        refresh()
+    }
+
+    /// A training session was just started: full, and starting to drain at the
+    /// next xx:00 or xx:30 (`BrainEnergy.sessionStart`); full until then.
+    func refillForSessionStart() {
+        BrainBatterySettings.refilledAt = BrainEnergy.sessionStart(startedAt: Date())
         refresh()
     }
 

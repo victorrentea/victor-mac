@@ -56,6 +56,30 @@ final class BrainEnergyTests: XCTestCase {
 
     func testAFutureReferenceIsIgnored() {
         XCTAssertNil(BrainEnergy.reference(breakEndedAt: t0 + 600, refilledAt: nil, now: t0))
+        XCTAssertNil(BrainEnergy.reference(breakEndedAt: nil, refilledAt: t0 + 31 * 60, now: t0))
+    }
+
+    /// A session started at 8:47 drains from 9:00; at 9:12 from 9:30; at 9:00 sharp from 9:00.
+    func testSessionStartsDrainingAtTheNextHalfHour() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Bucharest")!
+        func at(_ h: Int, _ m: Int, _ s: Int = 0) -> Date {
+            cal.date(from: DateComponents(year: 2026, month: 11, day: 18, hour: h, minute: m, second: s))!
+        }
+        XCTAssertEqual(BrainEnergy.sessionStart(startedAt: at(8, 47), calendar: cal), at(9, 0))
+        XCTAssertEqual(BrainEnergy.sessionStart(startedAt: at(9, 12, 30), calendar: cal), at(9, 30))
+        XCTAssertEqual(BrainEnergy.sessionStart(startedAt: at(9, 0), calendar: cal), at(9, 0))
+        XCTAssertEqual(BrainEnergy.sessionStart(startedAt: at(9, 59, 59), calendar: cal), at(10, 0))
+    }
+
+    /// Until the scheduled start the battery waits full and says when it starts.
+    func testFullUntilTheScheduledStart() {
+        let start = t0 + 13 * 60
+        let ref = BrainEnergy.reference(breakEndedAt: t0 - 3600, refilledAt: start, now: t0)
+        XCTAssertEqual(ref, start)
+        let state = BrainEnergy.state(reference: ref, now: t0)
+        XCTAssertEqual(state, .draining(level: 1, remaining: 75 * 60))
+        XCTAssertEqual(BrainEnergy.lines(state, reference: ref, now: t0)[2], "starts in ~13 minutes")
     }
 
     /// Hide holds until something newer than the click refills the battery.

@@ -3130,9 +3130,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         menuBarManager.setJoinLinkEnabled(true)
         if showJoinLink {
             showSessionJoinBanner()
-            // 🧠 A session just started: the room's attention is at 100%. Not on
+            // 🧠 A session just started: the room walks in fresh (Victor, 2026-11-16),
+            // and the battery drains from the next xx:00 / xx:30 (2026-11-18). Not on
             // the daemon's re-announce after a restart — that would refill mid-talk.
-            brainBattery?.refillNow()
+            brainBattery?.refillForSessionStart()
         }
     }
 
