@@ -19,6 +19,22 @@ class JoinLinkBanner: NSPanel {
     private var shownUppercase = false
     /// While compact: re-fits the pill when a status icon comes or goes.
     private var compactRefit: Timer?
+    /// While compact: when the pill starts fading to `fadedAlpha`.
+    private var fadeTimer: Timer?
+    private var fadeDeadline = Date.distantFuture
+
+    // The pill fades after 10 min in the bar; a hover brings it back for 5 more.
+    // Both can be shortened for a test: `defaults write ro.victorrentea.macos-addons
+    // JoinLinkFadeAfter 5` / `JoinLinkFadeAfterHover 3` (seconds).
+    private static var fadeAfter: TimeInterval { delay("JoinLinkFadeAfter", or: 10 * 60) }
+    private static var fadeAfterHover: TimeInterval { delay("JoinLinkFadeAfterHover", or: 5 * 60) }
+    static let fadedAlpha: CGFloat = 0.2
+    static let fadeDuration: TimeInterval = 20
+
+    private static func delay(_ key: String, or fallback: TimeInterval) -> TimeInterval {
+        let v = UserDefaults.standard.double(forKey: key)
+        return v > 0 ? v : fallback
+    }
     /// The session's Interact link, as opposed to a clipboard link — which of
     /// the two menu rows carries the ✓.
     private(set) var isSessionLink = false
@@ -72,6 +88,7 @@ class JoinLinkBanner: NSPanel {
         clickView.wantsLayer = true
         clickView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
         clickView.onClick = { [weak self] in self?.toggleCompact() }
+        clickView.onHover = { [weak self] in self?.compactHovered() }
         self.contentView = clickView
 
         urlLabel.isBordered = false
@@ -144,6 +161,7 @@ class JoinLinkBanner: NSPanel {
         shownUppercase = uppercaseLastSegment
         isCompact = false
         stopCompactRefit()
+        stopFade()
         layoutLarge()
 
         self.alphaValue = 1.0
@@ -166,8 +184,10 @@ class JoinLinkBanner: NSPanel {
             closePanel?.orderOut(nil)
             layoutCompact()
             startCompactRefit()
+            scheduleFade(after: Self.fadeAfter)
         } else {
             stopCompactRefit()
+            stopFade()
             layoutLarge()
             showQR(for: shownUrl)
             showClose()
@@ -234,6 +254,44 @@ class JoinLinkBanner: NSPanel {
         }
     }
 
+    private func scheduleFade(after delay: TimeInterval) {
+        fadeTimer?.invalidate()
+        fadeDeadline = Date().addingTimeInterval(delay)
+        fadeTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            guard let self, self.isCompact, self.bannerShowing else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = Self.fadeDuration
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                self.animator().alphaValue = Self.fadedAlpha
+            }
+        }
+    }
+
+    /// Back to opaque, and opaque for at least five more minutes.
+    private func compactHovered() {
+        guard isCompact, bannerShowing else { return }
+        if alphaValue < 1 {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.3
+                self.animator().alphaValue = 1
+            }
+        }
+        if fadeDeadline.timeIntervalSinceNow < Self.fadeAfterHover {
+            scheduleFade(after: Self.fadeAfterHover)
+        }
+    }
+
+    private func stopFade() {
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+        fadeDeadline = .distantFuture
+        // Cuts a running fade short too.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            self.animator().alphaValue = bannerShowing ? 1 : 0
+        }
+    }
+
     private func stopCompactRefit() {
         compactRefit?.invalidate()
         compactRefit = nil
@@ -258,7 +316,8 @@ class JoinLinkBanner: NSPanel {
                               widthPerPoint: CGFloat) -> (frame: NSRect, fontSize: CGFloat) {
         let rightLimit = (statusItemsMinX ?? screen.maxX) - compactGap
         let leftLimit = screen.minX + compactGap
-        var fontSize = floor(barHeight * 0.6)
+        // As big as the bar allows: it has to read on a small projector.
+        var fontSize = floor(barHeight * 0.8)
         var width = ceil(widthPerPoint * fontSize) + compactPadding * 2
         if width > rightLimit - leftLimit, widthPerPoint > 0 {
             fontSize = max(9, floor((rightLimit - leftLimit - compactPadding * 2) / widthPerPoint))
@@ -267,8 +326,7 @@ class JoinLinkBanner: NSPanel {
         var x = screen.midX - width / 2
         if x + width > rightLimit { x = rightLimit - width }
         if x < leftLimit { x = leftLimit }
-        let inset: CGFloat = 2
-        let frame = NSRect(x: x, y: screen.maxY - barHeight + inset, width: width, height: barHeight - inset * 2)
+        let frame = NSRect(x: x, y: screen.maxY - barHeight, width: width, height: barHeight)
         return (frame, fontSize)
     }
 
@@ -311,6 +369,7 @@ class JoinLinkBanner: NSPanel {
         isSessionLink = false
         isCompact = false
         stopCompactRefit()
+        stopFade()
         self.orderOut(nil)
         hideQR()
         closePanel?.orderOut(nil)
@@ -453,6 +512,15 @@ final class BannerClosePanel: NSPanel {
 /// Hosts the link label and turns a click anywhere on the strip (or pill) into `onClick`.
 private final class BannerClickView: NSView {
     var onClick: (() -> Void)?
+    var onHover: (() -> Void)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { onHover?() }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     // The label would otherwise swallow the click.
     override func hitTest(_ point: NSPoint) -> NSView? {

@@ -34,6 +34,11 @@ between this app and **Victor Effects**.
   **A click on the link shrinks it into the menu bar** (2026-11-18): a pill
   centred on the screen, as tall as the bar, with no QR and no ✕; a click on the
   pill brings it back large, the QR at the size it had. Every `show` starts large.
+  The pill fills the bar's height with text at 80 % of it (26 pt under a notch),
+  big enough for a small projector. **After 10 min in the bar it fades** over 20 s
+  to 20 % opacity; a hover brings it back to 100 % and keeps it there 5 more
+  minutes. Both delays can be shortened for a test (`defaults write
+  ro.victorrentea.macos-addons JoinLinkFadeAfter <s>` / `JoinLinkFadeAfterHover <s>`).
   The pill sits under the notch on the laptop's own panel, on purpose: a projector
   or a Zoom share sees the whole bar. It never reaches the status icons on the
   right: their left edge comes from the layer-25 windows in the bar's band

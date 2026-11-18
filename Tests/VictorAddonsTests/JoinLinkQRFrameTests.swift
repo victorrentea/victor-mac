@@ -36,23 +36,23 @@ final class JoinLinkCompactLayoutTests: XCTestCase {
     func testCompactLinkSitsCentredInTheMenuBar() {
         let l = JoinLinkBanner.compactLayout(screen: retina, barHeight: 33, statusItemsMinX: 1172, widthPerPoint: 18)
 
-        XCTAssertEqual(l.fontSize, 19)
+        XCTAssertEqual(l.fontSize, 26)
         XCTAssertEqual(l.frame.midX, retina.midX, accuracy: 1)
-        XCTAssertEqual(l.frame.maxY, retina.maxY - 2)
-        XCTAssertEqual(l.frame.minY, retina.maxY - 33 + 2)
+        XCTAssertEqual(l.frame.maxY, retina.maxY)
+        XCTAssertEqual(l.frame.minY, retina.maxY - 33)
     }
 
     func testCompactLinkMovesLeftRatherThanCoverAStatusIcon() {
         let l = JoinLinkBanner.compactLayout(screen: retina, barHeight: 33, statusItemsMinX: 900, widthPerPoint: 18)
 
-        XCTAssertEqual(l.fontSize, 19)
+        XCTAssertEqual(l.fontSize, 26)
         XCTAssertEqual(l.frame.maxX, 900 - JoinLinkBanner.compactGap)
     }
 
     func testCompactLinkShrinksOnlyWhenTheWholeBarIsTooNarrow() {
         let l = JoinLinkBanner.compactLayout(screen: retina, barHeight: 33, statusItemsMinX: 300, widthPerPoint: 18)
 
-        XCTAssertLessThan(l.fontSize, 19)
+        XCTAssertLessThan(l.fontSize, 26)
         XCTAssertGreaterThanOrEqual(l.frame.minX, retina.minX + JoinLinkBanner.compactGap)
         XCTAssertLessThanOrEqual(l.frame.maxX, 300 - JoinLinkBanner.compactGap)
     }
