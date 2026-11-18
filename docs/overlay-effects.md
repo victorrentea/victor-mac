@@ -34,6 +34,9 @@ between this app and **Victor Effects**.
   **A click on the link shrinks it into the menu bar** (2026-11-18): a pill
   centred on the screen, as tall as the bar, with no QR and no ✕; a click on the
   pill brings it back large, the QR at the size it had. Every `show` starts large.
+  The switch is a 0.35 s zoom both ways: a snapshot of the text scales while the
+  panel glides between the two frames, then the real label is laid out at the
+  final size (`toggleCompact` → `zoom`).
   The pill fills the bar's height with text at 80 % of it (26 pt under a notch),
   big enough for a small projector. **After 10 min in the bar it fades** over 20 s
   to 20 % opacity; a hover brings it back to 100 % and keeps it there 5 more

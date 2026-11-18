@@ -175,23 +175,73 @@ class JoinLinkBanner: NSPanel {
         showClose()
     }
 
-    /// Large ⇄ compact over the menu bar.
+    /// Large ⇄ compact over the menu bar: the link zooms from one into the other.
     func toggleCompact() {
-        guard bannerShowing else { return }
+        guard bannerShowing, !isZooming else { return }
+        let snapshot = labelSnapshot()
         isCompact.toggle()
+        let target: (frame: NSRect, fontSize: CGFloat)
         if isCompact {
             hideQR(keepExpansion: true)
             closePanel?.orderOut(nil)
-            layoutCompact()
-            startCompactRefit()
-            scheduleFade(after: Self.fadeAfter)
+            target = compactGeometry()
         } else {
             stopCompactRefit()
             stopFade()
-            layoutLarge()
-            showQR(for: shownUrl)
-            showClose()
+            target = largeGeometry()
         }
+        zoom(snapshot: snapshot, to: target) { [weak self] in
+            guard let self, self.bannerShowing else { return }
+            if self.isCompact {
+                self.layoutCompact()
+                self.startCompactRefit()
+                self.scheduleFade(after: Self.fadeAfter)
+            } else {
+                self.layoutLarge()
+                self.showQR(for: self.shownUrl)
+                self.showClose()
+            }
+        }
+    }
+
+    private var isZooming = false
+    static let zoomDuration: TimeInterval = 0.35
+
+    /// The text as a picture, so it can scale smoothly while the panel resizes.
+    private func labelSnapshot() -> NSImage? {
+        guard let rep = urlLabel.bitmapImageRepForCachingDisplay(in: urlLabel.bounds) else { return nil }
+        urlLabel.cacheDisplay(in: urlLabel.bounds, to: rep)
+        let image = NSImage(size: urlLabel.bounds.size)
+        image.addRepresentation(rep)
+        return image
+    }
+
+    /// Panel and text glide to `target` together; the real label comes back at the end.
+    private func zoom(snapshot: NSImage?, to target: (frame: NSRect, fontSize: CGFloat), then done: @escaping () -> Void) {
+        guard let snapshot else { done(); return }
+        let textSize = buildAttributedString(url: shownUrl, fontSize: target.fontSize, uppercaseLastSegment: shownUppercase).size()
+        let w = ceil(textSize.width) + 4, h = ceil(textSize.height)
+        let textTarget = NSRect(x: (target.frame.width - w) / 2, y: (target.frame.height - h) / 2, width: w, height: h)
+
+        let picture = NSImageView(frame: urlLabel.frame)
+        picture.image = snapshot
+        picture.imageScaling = .scaleAxesIndependently
+        clickView.addSubview(picture)
+        urlLabel.isHidden = true
+        if isCompact { clickView.layer?.cornerRadius = 6 }
+        isZooming = true
+
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Self.zoomDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            self.animator().setFrame(target.frame, display: true)
+            picture.animator().frame = textTarget
+        }, completionHandler: { [weak self] in
+            picture.removeFromSuperview()
+            self?.urlLabel.isHidden = false
+            self?.isZooming = false
+            done()
+        })
     }
 
     private func showClose() {
@@ -202,7 +252,7 @@ class JoinLinkBanner: NSPanel {
     }
 
     /// The link edge to edge across the screen, right under the menu bar.
-    private func layoutLarge() {
+    private func largeGeometry() -> (frame: NSRect, fontSize: CGFloat) {
         let screenWidth = targetScreen.frame.width
         let maxWidth = screenWidth - horizontalPadding * 2
         // A short clipboard URL would otherwise grow to half the screen.
@@ -214,35 +264,34 @@ class JoinLinkBanner: NSPanel {
         let fontSize = measured > 0
             ? min(maxFontSize, max(24, floor(Self.referenceFontSize * maxWidth / measured)))
             : 76
-        urlLabel.attributedStringValue = buildAttributedString(url: shownUrl, fontSize: fontSize, uppercaseLastSegment: shownUppercase)
-        urlLabel.sizeToFit()
-
-        let fittedWidth = min(ceil(urlLabel.frame.width), screenWidth)
-        let textHeight = ceil(urlLabel.frame.height)
+        let textHeight = ceil(buildAttributedString(url: shownUrl, fontSize: fontSize, uppercaseLastSegment: shownUppercase).size().height)
         let bannerHeight = textHeight + verticalPadding * 2
-        let bannerX = targetScreen.frame.origin.x
         let bannerY = targetScreen.frame.maxY - Self.menuBarHeight(of: targetScreen) - bannerHeight
-
-        self.setFrame(NSRect(x: bannerX, y: bannerY, width: screenWidth, height: bannerHeight), display: true)
-        clickView.layer?.cornerRadius = 0
-        urlLabel.frame = NSRect(x: (screenWidth - fittedWidth) / 2, y: verticalPadding, width: fittedWidth, height: textHeight)
+        return (NSRect(x: targetScreen.frame.minX, y: bannerY, width: screenWidth, height: bannerHeight), fontSize)
     }
 
     /// A pill in the middle of the menu bar, left of the status icons. Under the
     /// notch on the laptop's own panel, but whole on a projector or a share.
-    private func layoutCompact() {
+    private func compactGeometry() -> (frame: NSRect, fontSize: CGFloat) {
         let bar = Self.menuBarHeight(of: targetScreen)
-        let layout = Self.compactLayout(
+        return Self.compactLayout(
             screen: targetScreen.frame,
             barHeight: bar,
             statusItemsMinX: Self.statusItemsMinX(on: targetScreen, barHeight: bar),
             widthPerPoint: textWidth(atFontSize: Self.referenceFontSize) / Self.referenceFontSize)
-        urlLabel.attributedStringValue = buildAttributedString(url: shownUrl, fontSize: layout.fontSize, uppercaseLastSegment: shownUppercase)
+    }
+
+    private func layoutLarge() { apply(largeGeometry(), cornerRadius: 0) }
+    private func layoutCompact() { apply(compactGeometry(), cornerRadius: 6) }
+
+    /// The label at that size, centred in the panel at that frame.
+    private func apply(_ geometry: (frame: NSRect, fontSize: CGFloat), cornerRadius: CGFloat) {
+        urlLabel.attributedStringValue = buildAttributedString(url: shownUrl, fontSize: geometry.fontSize, uppercaseLastSegment: shownUppercase)
         urlLabel.sizeToFit()
-        let textW = ceil(urlLabel.frame.width), textH = ceil(urlLabel.frame.height)
-        self.setFrame(layout.frame, display: true)
-        clickView.layer?.cornerRadius = 6
-        urlLabel.frame = NSRect(x: (layout.frame.width - textW) / 2, y: (layout.frame.height - textH) / 2,
+        let textW = min(ceil(urlLabel.frame.width), geometry.frame.width), textH = ceil(urlLabel.frame.height)
+        if frame != geometry.frame { setFrame(geometry.frame, display: true) }
+        clickView.layer?.cornerRadius = cornerRadius
+        urlLabel.frame = NSRect(x: (geometry.frame.width - textW) / 2, y: (geometry.frame.height - textH) / 2,
                                 width: textW, height: textH)
     }
 
