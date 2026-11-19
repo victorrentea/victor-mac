@@ -22,6 +22,7 @@ final class MicStatusItem: NSObject, NSMenuDelegate {
         self.fill = fill
         self.onDefaultInputChange = onDefaultInputChange
         super.init()
+        item.autosaveName = "victor-mic"
         menu.delegate = self
         menu.autoenablesItems = false
         item.menu = menu

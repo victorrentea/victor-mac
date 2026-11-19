@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 19, 20:00"
+    static let BUILD_TIME = "Nov 19, 20:20"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -198,6 +198,8 @@ class MenuBarManager: NSObject, NSMenuDelegate {
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // Named, so its slot no longer depends on creation order (📡 is now created first).
+        statusItem.autosaveName = "victor-v"
         guard let button = statusItem.button else { return }
         button.image = makeLogoIcon(badge: nil)
         statusItem.menu = menu

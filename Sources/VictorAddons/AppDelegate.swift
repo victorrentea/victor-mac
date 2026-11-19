@@ -1914,6 +1914,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             self?.stopwatch.resumeIfNeeded()
         }
 
+        // 📡 Created (hidden) before the V, so it sits just right of it.
+        screenShareMenu.install()
         menuBarManager.setup()
         // Start from a not-running UI; the controller flips it on once Whisper
         // is actually up (or shows the battery-paused state).

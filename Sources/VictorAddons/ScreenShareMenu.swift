@@ -81,11 +81,29 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
     private let menu = NSMenu()
     private var timer: Timer?
     private(set) var reason: ScreenShareMenuPolicy.Reason?
-    private var shownSharing = false
+    /// The icon drawn last (live or not); nil = none drawn yet.
+    private var shownLive: Bool?
     /// 🪞 Victor Mirror's last answer; nil = not running / not answering.
     private(set) var mirror: MirrorProxy.VirtualDesktopState?
 
+    /// Creates the item, hidden, **before the 💬 V's own item** (AppDelegate calls
+    /// this right before `MenuBarManager.setup()`): an item created earlier sits
+    /// further right, so the 📡 screens land just right of the V — Victor wants the
+    /// two side by side (2026-11-19). It is then only ever hidden (`isVisible`),
+    /// never removed: a re-created item would come back at the far left of the
+    /// bar, away from the V. The autosave name keeps its slot across restarts.
+    func install() {
+        guard statusItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = "screen-share"
+        item.menu = menu
+        item.isVisible = false
+        statusItem = item
+        shownLive = nil
+    }
+
     func start() {
+        install()
         menu.delegate = self
         menu.autoenablesItems = false
         let nc = NotificationCenter.default
@@ -136,32 +154,41 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
         if let forced { r = forced ? (r ?? .external) : nil }
         reason = r
         guard let r else {
-            if let item = statusItem { NSStatusBar.system.removeStatusItem(item) }
-            statusItem = nil
+            if statusItem?.isVisible == true { statusItem?.isVisible = false }
             return
         }
-        if statusItem == nil {
-            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            item.menu = menu
-            statusItem = item
-            shownSharing = !sharing   // force the first paint
+        if statusItem?.isVisible == false {
+            Self.pinRightOfV()
+            statusItem?.isVisible = true
         }
-        if shownSharing != sharing {
-            shownSharing = sharing
+        if shownLive != sharing {
+            shownLive = sharing
             statusItem?.button?.image = Self.icon(live: sharing)
         }
         statusItem?.button?.toolTip = ScreenShareMenuPolicy.tooltip(r, externalScreens: external)
     }
 
-    var isShown: Bool { statusItem != nil }
+    var isShown: Bool { statusItem?.isVisible ?? false }
+
+    /// macOS keeps each named item's slot in this app's defaults as
+    /// `NSStatusItem Preferred Position <autosaveName>`, in points counted from the
+    /// right (smaller = further right), and **drops the key when the item is hidden**
+    /// — re-shown with no key, the item lands at the far left of the bar. So before
+    /// every show the 📡 slot is written one point right of the V's: it reappears
+    /// glued to the V, wherever Victor has ⌘-dragged the V (measured 2026-11-19).
+    static func pinRightOfV() {
+        let d = UserDefaults.standard
+        guard let v = d.object(forKey: "NSStatusItem Preferred Position victor-v") as? Double else { return }
+        d.set(v - 1, forKey: "NSStatusItem Preferred Position screen-share")
+    }
 
     // MARK: - Icon
 
     /// Two overlapping screens — the macOS Screen Mirroring glyph, the one sign
     /// for "this screen goes somewhere else" — drawn by hand a notch larger than
-    /// the SF symbol (22×18 instead of 21×16), with **a little V in the front
-    /// screen's top-left corner**, the V of the 💬 item's logo, so the eye finds
-    /// *this app's* item among the bar's other screen glyphs (Victor, 2026-11-19).
+    /// the SF symbol (22×18 instead of 21×16), with **the V of the 💬 item's logo
+    /// filling the front screen, centred**, so the eye finds *this app's* item
+    /// among the bar's other screen glyphs (Victor, 2026-11-19).
     /// Template, so it follows the bar; a live share adds a red dot, drawn into a
     /// non-template copy in the bar's ink.
     static func icon(live: Bool) -> NSImage {
@@ -185,9 +212,9 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
             f.lineWidth = line
             f.stroke()
             let v = NSBezierPath()
-            v.move(to: NSPoint(x: front.minX + 2.6, y: front.maxY - 2.4))
-            v.line(to: NSPoint(x: front.minX + 4.5, y: front.maxY - 7.0))
-            v.line(to: NSPoint(x: front.minX + 6.4, y: front.maxY - 2.4))
+            v.move(to: NSPoint(x: front.midX - 3.6, y: front.midY + 3.0))
+            v.line(to: NSPoint(x: front.midX, y: front.midY - 3.0))
+            v.line(to: NSPoint(x: front.midX + 3.6, y: front.midY + 3.0))
             v.lineWidth = 1.5
             v.lineCapStyle = .round
             v.lineJoinStyle = .round
