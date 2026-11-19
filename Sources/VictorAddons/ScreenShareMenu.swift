@@ -158,30 +158,48 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
     // MARK: - Icon
 
     /// Two overlapping screens — the macOS Screen Mirroring glyph, the one sign
-    /// for "this screen goes somewhere else". Template, so it follows the bar;
-    /// a live share adds a red dot, drawn into a non-template copy.
+    /// for "this screen goes somewhere else" — drawn by hand a notch larger than
+    /// the SF symbol (22×18 instead of 21×16), with **a little V in the front
+    /// screen's top-left corner**, the V of the 💬 item's logo, so the eye finds
+    /// *this app's* item among the bar's other screen glyphs (Victor, 2026-11-19).
+    /// Template, so it follows the bar; a live share adds a red dot, drawn into a
+    /// non-template copy in the bar's ink.
     static func icon(live: Bool) -> NSImage {
-        let base = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: "Screen sharing")?
-            .withSymbolConfiguration(.init(pointSize: 14, weight: .regular)) ?? NSImage()
-        guard live else { base.isTemplate = true; return base }
-        let size = NSSize(width: base.size.width + 4, height: max(base.size.height, 14))
-        let image = NSImage(size: size, flipped: false) { rect in
-            // The bar's ink, since a non-template image is drawn as-is.
-            let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            let ink = dark ? NSColor.white : NSColor.black
-            let tinted = NSImage(size: base.size, flipped: false) { r in
-                base.draw(in: r)
-                ink.set()
-                r.fill(using: .sourceAtop)
-                return true
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let ink: NSColor = live ? (dark ? .white : .black) : .black
+        let size = NSSize(width: 22, height: 18)
+        let image = NSImage(size: size, flipped: false) { _ in
+            let line: CGFloat = 1.4
+            let back = NSRect(x: 1, y: 6.5, width: 14.5, height: 10.5)
+            let front = NSRect(x: 5, y: 1, width: 15.5, height: 11.5)
+            ink.setStroke()
+            let b = NSBezierPath(roundedRect: back, xRadius: 2.5, yRadius: 2.5)
+            b.lineWidth = line
+            b.stroke()
+            // The front screen hides the back one: punch its footprint (plus a
+            // stroke's gap) out of what is drawn so far.
+            NSGraphicsContext.current?.compositingOperation = .clear
+            NSBezierPath(roundedRect: front.insetBy(dx: -line, dy: -line), xRadius: 3.5, yRadius: 3.5).fill()
+            NSGraphicsContext.current?.compositingOperation = .sourceOver
+            let f = NSBezierPath(roundedRect: front, xRadius: 2.5, yRadius: 2.5)
+            f.lineWidth = line
+            f.stroke()
+            let v = NSBezierPath()
+            v.move(to: NSPoint(x: front.minX + 2.6, y: front.maxY - 2.4))
+            v.line(to: NSPoint(x: front.minX + 4.5, y: front.maxY - 7.0))
+            v.line(to: NSPoint(x: front.minX + 6.4, y: front.maxY - 2.4))
+            v.lineWidth = 1.5
+            v.lineCapStyle = .round
+            v.lineJoinStyle = .round
+            v.stroke()
+            if live {
+                NSColor.systemRed.setFill()
+                NSBezierPath(ovalIn: NSRect(x: size.width - 7, y: size.height - 7, width: 7, height: 7)).fill()
             }
-            tinted.draw(in: NSRect(x: 0, y: (rect.height - base.size.height) / 2,
-                                   width: base.size.width, height: base.size.height))
-            NSColor.systemRed.setFill()
-            NSBezierPath(ovalIn: NSRect(x: rect.maxX - 7, y: rect.maxY - 7, width: 7, height: 7)).fill()
             return true
         }
-        image.isTemplate = false
+        image.isTemplate = !live
+        image.accessibilityDescription = "Screen sharing"
         return image
     }
 

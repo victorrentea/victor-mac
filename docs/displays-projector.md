@@ -6,7 +6,7 @@ Every row about sharing the screen left 💬 for **its own menu bar item** (Vict
 
 - **On the bar only while something is shared or about to be.** Reasons, strongest first: a live Zoom/Teams share (`MeetingShareWatch.isSharing`) → icon with a red dot; Zoom or Teams running; any non-built-in physical screen (projector, HDMI, the ASUS; 🪞's virtual screen excluded). Nothing → the item is removed. Re-evaluated on screen-parameter changes, app launch/quit, every share edge and a 2 s timer.
 - **Created/removed, never `isVisible`-toggled** — same reason as 🖥️ VM (`TartVMIndicator`): a hidden status item is a preference macOS remembers.
-- **The icon** is SF Symbol `rectangle.on.rectangle`, macOS's own Screen Mirroring glyph; the tooltip and the menu's first (disabled) row say why it is showing.
+- **The icon** is macOS's Screen Mirroring glyph (`rectangle.on.rectangle`) redrawn by hand a notch larger (22×18), with a little V — the 💬 item's logo letter — in the front screen's top-left corner, so this app's item is found at a glance (2026-11-19); the tooltip and the menu's first (disabled) row say why it is showing.
 - **The menu is rebuilt on every open** (`menuNeedsUpdate`), so ticks are read from their settings each time and no test hook has to repaint a title.
 - Every toggle acts on its own when the moment comes, so the item being absent never disables anything.
 - Test hook: `GET /test/share-menu[?force=on|off|auto][&open=secs]` → `{shown, reason, forced, externalScreens, sharing, rows}`.
