@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 19, 13:45"
+    static let BUILD_TIME = "Nov 19, 18:28"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -199,13 +199,11 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem.button else { return }
-        if let url = Bundle.module.url(forResource: "icon_leaf", withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
-            image.isTemplate = true
-            image.size = NSSize(width: 18, height: 18)
-            button.image = image
-        }
+        button.image = makeLogoIcon(badge: nil)
         statusItem.menu = menu
+        // 🎙️ Created after the V, so macOS puts it just left of it.
+        micStatusItem = MicStatusItem(fill: { [weak self] menu in self?.fillMicMenu(menu) },
+                                      onDefaultInputChange: { [weak self] in self?.refreshMicItem() })
         // The microphone is drawn in the menu bar's own ink (`makeMicIcon`), baked
         // into a bitmap beside a colour badge — so a bar that turns light or dark
         // (wallpaper, appearance) needs the picture drawn again.
@@ -222,6 +220,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         }
     }
     private var appearanceObservation: NSKeyValueObservation?
+    private var micStatusItem: MicStatusItem?
     private var lastBarAppearance: NSAppearance.Name?
 
     // MARK: - Menu Building
@@ -1538,34 +1537,88 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         guard let button = statusItem.button else { return }
         let badge = (wsConnected || sessionActive) ? "🟢" : "🟥"
 
-        // **The icon says which microphone, and nothing else** (2026-09-22). It
-        // briefly also said *which app is hearing him* — 🌊 for Wispr Flow, 📻
-        // for Walkie Talkie, for the length of a dictation — and Victor had it
-        // taken back out the same evening: the capsule is what he watches this
-        // picture for, and a glyph that means something different twenty times
-        // an hour is one he has to stop and decode. `CoreAudioManager` still
-        // knows which app holds the microphone; nothing draws it.
-        if isRecordingOnBattery {
-            // 👂 whatever the process is doing this second: on battery the ear
-            // is the state, and a starting-up gap is not an error worth a red stop.
-            button.image = makeMicIcon("👂", badge: badge) ?? makeEmojiIcon("👂", badge: badge) ?? makePngIcon("icon_leaf", badge: badge)
-        } else if !isTranscribing && isTranscriptionPausedByBattery {
-            button.image = makePngIcon("icon_leaf", badge: badge)
-        } else if !isTranscribing {
-            let asset = stopBlinkAlt ? "icon_stop_blue" : "icon_stop"
-            button.image = makePngIcon(asset, badge: badge)
-        } else if isTranscriptionStale {
-            button.image = makeEmojiIcon("🤐", badge: badge)
-        } else if !transcribeSource.isEmpty, let icon = makeMicIcon(transcribeSource, badge: badge) ?? makeEmojiIcon(transcribeSource, badge: badge) {
-            button.image = icon
-        } else {
-            button.image = makeChatBubbleIcon(badge: badge)
-        }
-        // Last, so it sits behind whatever the transcription state picked
-        // rather than competing with it for the same 18 points.
-        button.image = platedForMemoryPressure(button.image)
+        // **The V is the app; the microphone has its own item** (2026-11-19,
+        // Victor: the menu icon becomes the V-in-a-circle logo, and *"another menu
+        // bar item which represents the microphone which is currently selected, to
+        // be constantly displayed"*). The 🟢/🟥 training-assistant badge and the
+        // 🟥 memory plate stay on the V; everything about the microphone — which
+        // one, and whether Whisper hears it — moved to `micStatusItem`.
+        button.image = platedForMemoryPressure(makeLogoIcon(badge: badge))
+        refreshMicItem()
         updateStopBlinkTimer()
         updateMemoryBlinkTimer()
+    }
+
+    // MARK: - 🎙️ The microphone item
+
+    /// **Always the microphone, with the transcription state as a corner mark**
+    /// — what the 💬 icon drew before the V took it (2026-11-19). The mic is the
+    /// one Whisper is hearing while it runs, else the one picked in the menu,
+    /// else the system default input mapped onto `MicRoster`; never blank, so
+    /// the item never jumps in and out of the bar.
+    private func refreshMicItem() {
+        guard let micStatusItem else { return }
+        let glyph = shownMicGlyph()
+        let mark: String?
+        if isRecordingOnBattery { mark = "👂" }
+        else if !isTranscribing && isTranscriptionPausedByBattery { mark = "🍃" }
+        else if !isTranscribing { mark = stopBlinkAlt ? "🟦" : "🟥" }
+        else if isTranscriptionStale { mark = "🤐" }
+        else { mark = nil }
+        micStatusItem.setImage(makeMicIcon(glyph, badge: mark) ?? makeEmojiIcon(glyph, badge: mark)
+                               ?? makeMicIcon("🎙️", badge: mark))
+        let mic = MicRoster.byGlyph(glyph)
+        let name = mic.map { "\($0.glyph) \($0.label)" } ?? glyph.nonBlank(or: "unknown input")
+        let state = isRecordingOnBattery ? "recording on battery"
+            : (!isTranscribing && isTranscriptionPausedByBattery) ? "transcription off on battery"
+            : !isTranscribing ? "transcription stopped"
+            : isTranscriptionStale ? "no words for a while" : "transcribing"
+        micStatusItem.setToolTip("Mic: \(name) — \(state)")
+    }
+
+    private func shownMicGlyph() -> String {
+        if isTranscribing, !transcribeSource.isEmpty { return transcribeSource }
+        if let mic = MicRoster.byId(chosenMic) { return mic.glyph }
+        if let name = LiveCaptionsStream.defaultInputName(),
+           let mic = MicRoster.all.first(where: { name.range(of: $0.pattern, options: .caseInsensitive) != nil }) {
+            return mic.glyph
+        }
+        return transcribeSource.isEmpty ? "🎙️" : transcribeSource
+    }
+
+    /// The mic item's menu: where transcription stands, then the same mic rows as
+    /// 🎙️ Transcribing's submenu (Automatic + the roster), built fresh on open.
+    private func fillMicMenu(_ menu: NSMenu) {
+        updateTranscribeTitle()
+        let header = NSMenuItem(title: transcribeItem?.title ?? "🎙️ Microphone", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        menu.addItem(.separator())
+        appendMicRows(to: menu)
+    }
+
+    /// The V-in-a-circle logo (Flaticon "Letter V", 2026-11-19) in the bar's ink,
+    /// with the badge — baked like `makeMicIcon`, since the colour badge rules out
+    /// a template image.
+    private func makeLogoIcon(badge: String?) -> NSImage? {
+        guard let url = Bundle.module.url(forResource: "icon_v", withExtension: "png"),
+              let logo = NSImage(contentsOf: url) else { return makePngIcon("icon_chat", badge: badge) }
+        let dark = statusItem?.button?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) != .aqua
+        let size = NSSize(width: 18, height: 18)
+        let inked = NSImage(size: size, flipped: false) { rect in
+            let box = rect.insetBy(dx: 1, dy: 1)
+            logo.draw(in: box)
+            (dark ? NSColor.white : NSColor.black).set()
+            box.fill(using: .sourceAtop)
+            return true
+        }
+        let composite = NSImage(size: size)
+        composite.lockFocus()
+        inked.draw(in: NSRect(origin: .zero, size: size))
+        if let badge, !badge.isEmpty { drawBadge(badge, canvas: size) }
+        composite.unlockFocus()
+        composite.isTemplate = false
+        return composite
     }
 
     // MARK: - 🟥 Memory pressure plate
@@ -1869,13 +1922,26 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // the one row that is true whatever is on the desk. It was missing here
         // entirely until 2026-09-22, which meant a pick made in this menu could
         // never be taken back.
+        appendMicRows(to: transcribeSubmenu)
+        // …then the separator and the 🔴 raw-capture toggle. Below the line
+        // because it is a different kind of row: the ones above choose WHICH mic
+        // is heard, this one decides whether that mic is also written to disk.
+        transcribeSubmenu.addItem(.separator())
+        applyRecordRawState()
+        transcribeSubmenu.addItem(recordRawItem)
+        transcribeSubmenu.addItem(voiceCorpusItem)
+    }
+
+    /// Automatic + one row per roster mic, ticked by what was picked. Shared by
+    /// 🎙️ Transcribing's submenu and the 🎙️ mic item's menu.
+    private func appendMicRows(to menu: NSMenu) {
         let auto = NSMenuItem(title: "Automatic — \(MicRoster.ladder)",
                               action: #selector(pickSource(_:)), keyEquivalent: "")
         auto.target = self
         auto.representedObject = MicPreference.automatic
         auto.state = (chosenMic == MicPreference.automatic) ? .on : .off
-        transcribeSubmenu.addItem(auto)
-        transcribeSubmenu.addItem(.separator())
+        menu.addItem(auto)
+        menu.addItem(.separator())
 
         for mic in MicRoster.all {
             // Same glyphs as Walkie Talkie's `Mic` submenu, row for row
@@ -1899,15 +1965,8 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             // the built-in*, which is the sentence he needs when a cable has
             // come out.
             item.state = (mic.id == chosenMic) ? .on : .off
-            transcribeSubmenu.addItem(item)
+            menu.addItem(item)
         }
-        // …then the separator and the 🔴 raw-capture toggle. Below the line
-        // because it is a different kind of row: the ones above choose WHICH mic
-        // is heard, this one decides whether that mic is also written to disk.
-        transcribeSubmenu.addItem(.separator())
-        applyRecordRawState()
-        transcribeSubmenu.addItem(recordRawItem)
-        transcribeSubmenu.addItem(voiceCorpusItem)
     }
 
     @objc private func pickSource(_ sender: NSMenuItem) {

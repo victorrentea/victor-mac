@@ -2,6 +2,16 @@
 
 What stays a menu row and why; rows removed in favour of the ⌘⌃ cheat-sheet (see `keyboard-overlays.md`).
 
+**2026-11-19 — the icon is a V, the microphone got its own item.** The 💬 item's picture is
+the V-in-a-circle logo (`icon_v.png`, cut from Flaticon's "Letter V" Victor copied) in the
+bar's ink, still with the 🟢/🟥 training-assistant badge and the 🟥 memory plate. What it used to
+draw — the microphone and whether Whisper hears it — is **🎙️ `MicStatusItem`**, always on the
+bar just left of the V: the roster mic's line drawing (Whisper's source while it runs, else the
+pick, else the system default input mapped onto `MicRoster`), with the state as a corner mark —
+🟥/🟦 blinking = stopped on AC, 🤐 stale, 🍃 off on battery, 👂 recording on battery, nothing =
+transcribing. Its menu is the 🎙️ Transcribing title plus the same Automatic + roster rows
+(`appendMicRows`); a CoreAudio listener redraws it when the default input changes.
+
 - **☠️ Kill port** — submenu with recent ports + custom port dialog
 - **Renamed on 2026-09-22** (Victor's menu pass): `🟢 Interact Link` → `🟢 Display Interact Link ⧈`,
   `🔳 Display clipboard link` → `🔗 Display clipboard link ⧈` (⧈ = *this shows a QR*),
