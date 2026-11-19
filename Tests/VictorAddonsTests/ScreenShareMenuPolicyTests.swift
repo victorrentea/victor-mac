@@ -17,6 +17,8 @@ final class ScreenShareMenuPolicyTests: XCTestCase {
         XCTAssertEqual(ScreenShareMenuPolicy.reason(externalScreens: 0, meetingAppRunning: false, sharing: true), .sharing)
     }
     func testTooltipCountsScreens() {
+        XCTAssertEqual(ScreenShareMenuPolicy.reason(externalScreens: 0, meetingAppRunning: false, sharing: false, virtualDesktopUp: true), .virtualDesktop)
+        XCTAssertEqual(ScreenShareMenuPolicy.reason(externalScreens: 1, meetingAppRunning: true, sharing: false, virtualDesktopUp: true), .meetingApp)
         XCTAssertEqual(ScreenShareMenuPolicy.tooltip(.external, externalScreens: 1), "An external screen is connected")
         XCTAssertEqual(ScreenShareMenuPolicy.tooltip(.external, externalScreens: 2), "2 external screens are connected")
     }

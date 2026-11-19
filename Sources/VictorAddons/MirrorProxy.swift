@@ -6,6 +6,9 @@ import Foundation
 /// no longer kills the invisible screen — and with it the Teams/Zoom share running
 /// on it. (🔊 Auto Share Faceover went along and came back the same evening.)
 ///
+/// Since 2026-11-19 Mirror has no menu bar item: its 🪞 rows live in 📡
+/// `ScreenShareMenu`, which reads and flips them through `virtualDesktop(_:_:)`.
+///
 /// Only the historic test hook `/test/virtual-desktop` is forwarded, so the curl
 /// lines in old notes still work on 55123. Like
 /// `EffectsProxy`, it runs on the server queue, never the main thread.
@@ -35,6 +38,29 @@ enum MirrorProxy {
             return (503, "application/json", Data("{\"ok\":false,\"reason\":\"mirror-down\"}".utf8))
         }
         return (answer.0, "application/json", answer.1)
+    }
+
+    struct VirtualDesktopState: Equatable {
+        let up: Bool
+        let autoStart: Bool
+    }
+
+    /// `GET /virtual-desktop[/set|/auto?on=]` → the state, on the main queue; nil
+    /// when Mirror is down. Short timeout: it runs every 2 s and on a click.
+    static func virtualDesktop(_ pathAndQuery: String = "/virtual-desktop",
+                               _ done: @escaping (VirtualDesktopState?) -> Void) {
+        guard let url = URL(string: baseURL + pathAndQuery) else { return }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 3
+        session.dataTask(with: request) { data, _, _ in
+            var state: VirtualDesktopState?
+            if let data,
+               let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let up = o["up"] as? Bool, let auto = o["autoStart"] as? Bool {
+                state = VirtualDesktopState(up: up, autoStart: auto)
+            }
+            DispatchQueue.main.async { done(state) }
+        }.resume()
     }
 
     /// The silhouette's window ids, asked once at launch: Victor Mirror pushes

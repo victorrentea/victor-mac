@@ -8,14 +8,18 @@ enum ScreenShareMenuPolicy {
     enum Reason: String {
         case sharing      // Zoom or Teams is sharing the screen right now
         case meetingApp   // Zoom or Teams is running
+        case virtualDesktop // 🪞 Victor Mirror's invisible screen is up
         case external     // a projector / HDMI / the ASUS is plugged in
     }
 
     /// Strongest reason first: a live share outranks an open meeting app, which
     /// outranks a cable. Nil = nothing is being or about to be shared: no item.
-    static func reason(externalScreens: Int, meetingAppRunning: Bool, sharing: Bool) -> Reason? {
+    static func reason(externalScreens: Int, meetingAppRunning: Bool, sharing: Bool,
+                       virtualDesktopUp: Bool = false) -> Reason? {
         if sharing { return .sharing }
         if meetingAppRunning { return .meetingApp }
+        // Up without Zoom/Teams only when switched on by hand — its row must stay reachable.
+        if virtualDesktopUp { return .virtualDesktop }
         if externalScreens > 0 { return .external }
         return nil
     }
@@ -24,6 +28,7 @@ enum ScreenShareMenuPolicy {
         switch reason {
         case .sharing: return "Sharing your screen in Zoom/Teams"
         case .meetingApp: return "Zoom/Teams is open — ready to share"
+        case .virtualDesktop: return "🪞 Virtual Desktop is up"
         case .external: return externalScreens == 1 ? "An external screen is connected" : "\(externalScreens) external screens are connected"
         }
     }
@@ -39,6 +44,14 @@ enum ScreenShareMenuPolicy {
 /// ◀ ASUS ▶ flip, 🎥 Layout Zoom/Teams, 🖥️ PowerPoint Presenter View, 🔊 Auto
 /// Share Faceover, 🎞️ Retina 60 Hz, 🔻 Retina Default while sharing and 🔊 Teams Share with Sound.
 /// Same process, same settings, same code paths — only the rows moved.
+///
+/// **🪞 Victor Mirror's two rows joined the same day** (Victor: *"merge the
+/// virtual desktop thingy with the new sharing screen menu item"*): Virtual
+/// Desktop and its Auto-start on Zoom/Teams. Mirror stays a separate process, so
+/// that redeploying this one never kills the 🪞 screen or the share on it; it
+/// just lost its own menu bar item. The rows are drawn from `/virtual-desktop`
+/// on 55127, fetched in the background with every refresh, and are absent while
+/// Mirror does not answer.
 ///
 /// The item **exists only while something is shared or about to be**
 /// (`ScreenShareMenuPolicy`): an external screen (projector, HDMI, the ASUS),
@@ -69,6 +82,8 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
     private var timer: Timer?
     private(set) var reason: ScreenShareMenuPolicy.Reason?
     private var shownSharing = false
+    /// 🪞 Victor Mirror's last answer; nil = not running / not answering.
+    private(set) var mirror: MirrorProxy.VirtualDesktopState?
 
     func start() {
         menu.delegate = self
@@ -101,12 +116,23 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
         }
     }
 
+    /// Re-evaluates now, and asks Victor Mirror for its state on the side.
     func refresh() {
+        apply()
+        MirrorProxy.virtualDesktop { [weak self] state in
+            guard let self, state != self.mirror else { return }
+            self.mirror = state
+            self.apply()
+        }
+    }
+
+    private func apply() {
         let external = Self.externalScreenCount()
         let sharing = isSharing?() ?? false
         var r = ScreenShareMenuPolicy.reason(externalScreens: external,
                                              meetingAppRunning: Self.meetingAppRunning(),
-                                             sharing: sharing)
+                                             sharing: sharing,
+                                             virtualDesktopUp: mirror?.up ?? false)
         if let forced { r = forced ? (r ?? .external) : nil }
         reason = r
         guard let r else {
@@ -195,6 +221,16 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
                 icon: Self.zoomLayoutIcon, action: #selector(layoutZoomAction))
         }
 
+        // 🪞 Victor Mirror's screen, the one shared in place of the Retina.
+        if let mirror {
+            add(MenuBarManager.ticked(Self.virtualDesktopTitle, mirror.up),
+                icon: MenuBarManager.emojiIcon("🪞"), action: #selector(toggleVirtualDesktopAction),
+                tip: "An invisible screen with the Retina and you cut out bottom-right. Share that screen in Teams/Zoom. On the Retina you see only your faint 20% shadow; rest the pointer on it 3 s for a ← that moves you left.")
+            add(MenuBarManager.ticked(Self.virtualDesktopAutoTitle, mirror.autoStart),
+                icon: MenuBarManager.emojiIcon("🪞"), action: #selector(toggleVirtualDesktopAutoAction),
+                tip: "Switch 🪞 Virtual Desktop on by itself when Zoom or Teams starts. It still goes off when the last of them quits.")
+        }
+
         // What acts on its own when a slide show or a share starts.
         menu.addItem(.separator())
         add(MenuBarManager.ticked(Self.pptPresenterTitle, PowerPointPresenterSettings.isEnabled),
@@ -246,6 +282,17 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
     @objc private func placeAsusLeftAction() { onPlaceAsus?(.left) }
     @objc private func placeAsusRightAction() { onPlaceAsus?(.right) }
     @objc private func layoutZoomAction() { onLayoutZoom?() }
+    /// Victor Mirror answers with its new state; the tick follows that, not the click.
+    @objc private func toggleVirtualDesktopAction() {
+        MirrorProxy.virtualDesktop("/virtual-desktop/set?on=\((mirror?.up ?? false) ? 0 : 1)") { [weak self] in
+            self?.mirror = $0; self?.apply()
+        }
+    }
+    @objc private func toggleVirtualDesktopAutoAction() {
+        MirrorProxy.virtualDesktop("/virtual-desktop/auto?on=\((mirror?.autoStart ?? true) ? 0 : 1)") { [weak self] in
+            self?.mirror = $0; self?.apply()
+        }
+    }
 
     /// Notifies nobody: `PowerPointPresenterPlacement` reads the setting on each scan.
     @objc private func togglePptPresenterAction() { PowerPointPresenterSettings.isEnabled.toggle() }
@@ -263,6 +310,8 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
         onToggleRetinaShareRes?()
     }
 
+    static let virtualDesktopTitle = "Virtual Desktop"
+    static let virtualDesktopAutoTitle = "Auto-start on Zoom/Teams"
     static let faceoverTitle = "Auto Share Faceover"
     static let retinaCapTitle = "Retina 60 Hz in Zoom/Teams"
     static let retinaShareResTitle = "Retina 1728×1117 while sharing"
