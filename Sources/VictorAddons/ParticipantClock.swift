@@ -68,6 +68,7 @@ final class ParticipantClock {
         let panel: NSPanel
         let screen: NSScreen
         let label: NSTextField
+        let fill: NSView
     }
     private var tabs: [Tab] = []
     private var timer: Timer?
@@ -138,20 +139,27 @@ final class ParticipantClock {
     static var font: NSFont { NSFont.menuBarFont(ofSize: 0) }
     /// Where the menu bar clock's last digit ends, measured on 2026-11-19 (12–13 pt
     /// from the screen's right edge on the Dells and the Retina).
-    static let padRight: CGFloat = 10
+    static let padRight: CGFloat = 8.5
     static let padLeft: CGFloat = 8
     static let height: CGFloat = 22
+    /// How far the tab reaches up into a bar this tall: the clock's digits end ~5 pt
+    /// below the bar's middle; this puts ours one line of 13 pt text under them
+    /// (~6.5 pt between the two rows of digits).
+    static func overlap(barHeight: CGFloat) -> CGFloat { max(0, (barHeight / 2 - 5).rounded()) }
     static let cornerRadius: CGFloat = 7
     /// Until the first sample lands (or with no Screen Recording grant).
     static let fallbackFill = NSColor(white: 0.12, alpha: 0.92)
 
     private func makeTab(text: String, on screen: NSScreen) -> Tab {
-        let label = MenuBarText(labelWithString: text)
+        let label = NSTextField(labelWithString: text)
         label.font = Self.font
         label.sizeToFit()
         let size = NSSize(width: ceil(label.frame.width) + Self.padLeft + Self.padRight, height: Self.height)
-        // Flush under the menu bar, flush with the screen's right edge: a tab hanging from the bar.
-        let origin = NSPoint(x: screen.frame.maxX - size.width, y: screen.visibleFrame.maxY - size.height)
+        // Its top reaches up into the bar, just under the clock's digits (centred in the bar,
+        // ~5 pt below the middle), so the two read as two lines of one clock.
+        let barHeight = screen.frame.maxY - screen.visibleFrame.maxY
+        let overlap = Self.overlap(barHeight: barHeight)
+        let origin = NSPoint(x: screen.frame.maxX - size.width, y: screen.visibleFrame.maxY + overlap - size.height)
 
         let panel = NSPanel(contentRect: NSRect(origin: origin, size: size),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -164,15 +172,19 @@ final class ParticipantClock {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
 
-        let fill = NSView(frame: NSRect(origin: .zero, size: size))
+        // Clear where it lies on the bar (the real bar, gradient and all, shows through);
+        // filled with the bar's bottom colour only below it, bottom-left corner rounded.
+        let root = NSView(frame: NSRect(origin: .zero, size: size))
+        let fill = NSView(frame: NSRect(x: 0, y: 0, width: size.width, height: size.height - overlap))
         fill.wantsLayer = true
         fill.layer?.cornerRadius = Self.cornerRadius
         fill.layer?.maskedCorners = [.layerMinXMinYCorner]   // bottom-left only; the rest touches bar and edge
         fill.layer?.masksToBounds = true
+        root.addSubview(fill)
         label.frame.origin = NSPoint(x: Self.padLeft, y: (Self.height - label.frame.height) / 2)
-        fill.addSubview(label)
-        panel.contentView = fill
-        let tab = Tab(panel: panel, screen: screen, label: label)
+        root.addSubview(label)
+        panel.contentView = root
+        let tab = Tab(panel: panel, screen: screen, label: label, fill: fill)
         paint(tab, with: barColors[NSStringFromRect(screen.frame)])
         panel.orderFrontRegardless()
         return tab
@@ -180,9 +192,8 @@ final class ParticipantClock {
 
     private func paint(_ tab: Tab, with bar: NSColor?) {
         let fill = bar ?? Self.fallbackFill
-        tab.panel.contentView?.layer?.backgroundColor = fill.cgColor
-        // Not opaque white: the bar's text is vibrant, the backdrop shows through it a little.
-        tab.label.textColor = ParticipantClockPolicy.isLight(fill) ? NSColor(white: 0, alpha: 0.8) : NSColor(white: 1, alpha: 0.85)
+        tab.fill.layer?.backgroundColor = fill.cgColor
+        tab.label.textColor = ParticipantClockPolicy.isLight(fill) ? .black : .white
     }
 
     /// Averages the top rows of the menu bar over each tab's width — above the
@@ -193,10 +204,12 @@ final class ParticipantClock {
         let targets = tabs.map { (screen: $0.screen, x: $0.panel.frame.minX) }
         Task { @MainActor [weak self] in
             for t in targets {
-                // 6–8 pt down and 8 pt clear of the right edge: inside Zoom's 5 pt green
-                // "you are sharing" frame (it turned the Retina's tab green), still above the
-                // glyphs (cap tops ~10 pt down in the 30–33 pt bars here).
-                let strip = NSRect(x: t.x, y: t.screen.frame.maxY - 8, width: t.screen.frame.maxX - t.x - 8, height: 2)
+                // Near the bar's bottom (4–6 pt above its edge: the last rows carry a darker
+                // line that greyed the Retina's tab), 8 pt clear of the right
+                // edge — under the clock's digits, so what continues below the bar is the colour
+                // the bar ends with (Tahoe's bar is a gradient). Our own tab is excluded.
+                let bottom = t.screen.visibleFrame.maxY
+                let strip = NSRect(x: t.x, y: bottom + 4, width: t.screen.frame.maxX - t.x - 8, height: 2)
                 guard let color = await Self.averageColor(of: strip, on: t.screen) else { continue }
                 guard let self else { return }
                 self.barColors[NSStringFromRect(t.screen.frame)] = color
@@ -255,11 +268,3 @@ final class ParticipantClock {
     }
 }
 
-/// The bar draws its text without font smoothing ("dilation"); a label on an
-/// opaque layer gets it and reads a weight heavier than the clock above it.
-private final class MenuBarText: NSTextField {
-    override func draw(_ dirtyRect: NSRect) {
-        NSGraphicsContext.current?.cgContext.setShouldSmoothFonts(false)
-        super.draw(dirtyRect)
-    }
-}
