@@ -164,6 +164,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var meetingDetector: MeetingDetector?
     /// 📡 Zoom or Teams screen share, debounced — switches the 🎙️ voice meter.
     private let shareWatch = MeetingShareWatch()
+    /// 📡 The screen-share menu bar item — every share/projector row, out of 💬.
+    private let screenShareMenu = ScreenShareMenu()
     /// 🔊 Ticks "Share sound" (+ picks the presenter layout) in Zoom's share picker.
     private var zoomSharePrep: ZoomSharePrep?
     /// 🎞️ The Retina at 60 Hz while Zoom or Teams runs.
@@ -1514,7 +1516,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             guard let self else { return "{\"error\":\"unavailable\"}" }
             if let on = query["on"] {
                 RetinaRefreshCapSettings.isEnabled = on == "1"
-                self.menuBarManager.retinaCapItem?.title = MenuBarManager.ticked(MenuBarManager.retinaCapTitle, on == "1")
                 self.retinaCap.apply()
             }
             if let m = query["meeting"] { self.retinaCap.meeting = m == "1" }
@@ -1526,12 +1527,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             guard let self else { return "{\"error\":\"unavailable\"}" }
             if let on = query["on"] {
                 RetinaShareResolutionSettings.isEnabled = on == "1"
-                self.menuBarManager.retinaShareResItem?.title = MenuBarManager.ticked(MenuBarManager.retinaShareResTitle, on == "1")
                 self.retinaShareRes.apply()
             }
             // `auto` hands back to the real share watch: a pretend otherwise lasts until the next real edge.
             if let s = query["sharing"] { self.retinaShareRes.sharing = s == "auto" ? self.shareWatch.isSharing : s == "1" }
             return self.retinaShareRes.snapshotJSON()
+        }
+        // /test/share-menu?force=on|off|auto&open=secs — 📡 whether the item is on the
+        // bar and why, its rows as the menu would show them; `open` clicks it.
+        tabletServer?.onTestShareMenu = { [weak self] query in
+            guard let self else { return "{\"error\":\"unavailable\"}" }
+            let m = self.screenShareMenu
+            switch query["force"] {
+            case "on": m.forced = true
+            case "off": m.forced = false
+            case "auto": m.forced = nil
+            default: break
+            }
+            m.refresh()
+            if let secs = query["open"].flatMap(Double.init) {
+                DispatchQueue.main.async { m.openForTest(closeAfter: min(max(secs, 0.5), 10)) }
+            }
+            let json: [String: Any] = [
+                "shown": m.isShown,
+                "reason": m.reason?.rawValue ?? "none",
+                "forced": m.forced.map { $0 ? "on" : "off" } ?? "auto",
+                "externalScreens": ScreenShareMenu.externalScreenCount(),
+                "sharing": self.shareWatch.isSharing,
+                "rows": m.rowTitles(),
+            ]
+            let data = (try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])) ?? Data()
+            return String(data: data, encoding: .utf8) ?? "{}"
         }
         tabletServer?.onTestPresentation = { [weak self] in
             self?.presentationSnapshotJSON() ?? "{\"error\":\"unavailable\"}"
@@ -1673,18 +1699,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         menuBarManager.onTileTerminals = {
             DispatchQueue.global(qos: .userInitiated).async { TerminalTiler.tile() }
         }
-        menuBarManager.onFixDisplayLayout = { [weak self] in
+        // 📡 The screen-share rows live in their own menu bar item (`ScreenShareMenu`).
+        screenShareMenu.onFixDisplayLayout = { [weak self] in
             self?.displayArrangementManager?.applyNow()
         }
-        menuBarManager.asusState = { [weak self] in
+        screenShareMenu.asusState = { [weak self] in
             self?.displayArrangementManager?.asusState() ?? .absent
         }
-        menuBarManager.onPlaceAsus = { [weak self] side in
+        screenShareMenu.onPlaceAsus = { [weak self] side in
             self?.displayArrangementManager?.placeAsus(side)
         }
-        menuBarManager.onLayoutZoom = { [weak self] in
+        screenShareMenu.onLayoutZoom = { [weak self] in
             self?.layoutZoom()
         }
+        screenShareMenu.isSharing = { [weak self] in self?.shareWatch.isSharing ?? false }
         menuBarManager.onMonitor = { [weak self] in
             self?.openTranscriptionMonitor()
         }
@@ -1892,7 +1920,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         zoomPrep.start()
 
         // 🎞️ Zoom/Teams running: the Retina at 60 Hz at most.
-        menuBarManager.onToggleRetinaCap = { [weak self] in self?.retinaCap.apply() }
+        screenShareMenu.onToggleRetinaCap = { [weak self] in self?.retinaCap.apply() }
         retinaCap.start()
 
         // 🔍 ⌥⌘F flips the magnifier between Full screen and Picture-in-picture, and
@@ -1941,14 +1969,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         // the mic the meeting uses; the effects app holds every effect under it.
         // 🔻 …and the Retina drops to 1× for the share's duration (a mode left over
         // from a crash mid-share is given back by the first apply()).
-        menuBarManager.onToggleRetinaShareRes = { [weak self] in self?.retinaShareRes.apply() }
+        screenShareMenu.onToggleRetinaShareRes = { [weak self] in self?.retinaShareRes.apply() }
         retinaShareRes.apply()
         shareWatch.onChange = { [weak self] sharing in
             VoiceMeter.shared.setSharing(sharing)
             self?.retinaShareRes.sharing = sharing
+            self?.screenShareMenu.refresh()
         }
         VoiceRoutes.share = shareWatch
         shareWatch.start()
+        // 📡 On the bar while a screen is plugged in, Zoom/Teams runs or a share is live.
+        screenShareMenu.start()
 
         // The "Resumed Xm ago" menu clock now tracks OUR break timer — the ✕ button
         // or the countdown expiring — not the external Timer RH app. breakEndedAt is

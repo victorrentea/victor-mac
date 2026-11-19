@@ -135,6 +135,7 @@ case testTerminalFont
         case testRetinaCap([String: String])
         /// 🔻 `RetinaShareResolution`: pretend a share (`sharing=`), move the tick (`on=`).
         case testRetinaShareRes([String: String])
+        case testShareMenu([String: String])
         /// JSON snapshot of Zoom's join-preview dialog + a forced re-press of it.
         case testZoomJoin
         /// 🎥 Layout Zoom: start a run (unless `run=0`) and return the last report.
@@ -378,6 +379,8 @@ case testTerminalFont
     var onTestZoomShare: (() -> String)?
     /// 🎞️ `RetinaRefreshCap` — the query, as given.
     var onTestRetinaCap: (([String: String]) -> String)?
+    /// `/test/share-menu` — 📡 the screen-share menu bar item (`ScreenShareMenu`).
+    var onTestShareMenu: (([String: String]) -> String)?
     /// 🔻 `RetinaShareResolution` — the query, as given.
     var onTestRetinaShareRes: (([String: String]) -> String)?
     var onTestZoomJoin: (() -> String)?
@@ -762,6 +765,10 @@ case testTerminalFont
                 contentType = "application/json"
                 body = self.onTestRetinaShareRes?(query) ?? "{\"error\":\"unavailable\"}"
                 if self.onTestRetinaShareRes == nil { statusCode = 503 }
+            case .testShareMenu(let query):
+                contentType = "application/json"
+                body = self.onTestShareMenu?(query) ?? "{\"error\":\"unavailable\"}"
+                if self.onTestShareMenu == nil { statusCode = 503 }
             case .testZoomJoin:
                 contentType = "application/json"
                 body = self.onTestZoomJoin?() ?? "{\"error\":\"unavailable\"}"
@@ -1194,6 +1201,9 @@ case testTerminalFont
         case "/test/retina-share-res":
             return .testRetinaShareRes(Dictionary(queryItems.compactMap { i in i.value.map { (i.name, $0) } },
                                                   uniquingKeysWith: { _, last in last }))
+        case "/test/share-menu":
+            return .testShareMenu(Dictionary(queryItems.compactMap { i in i.value.map { (i.name, $0) } },
+                                             uniquingKeysWith: { _, last in last }))
         case "/test/virtual-desktop":
             return .mirrorProxied(path)
         case "/mirror/exclusions":

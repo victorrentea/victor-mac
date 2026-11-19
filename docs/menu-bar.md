@@ -100,6 +100,10 @@ That last case is what put the row here, on 2026-09-22: a Codex run was driving 
 
 **Nothing is notified when it is clicked**, for `ScrollReversal`'s reason exactly: `ZoomSharePrep` reads `ZoomSharePrepSettings.isEnabled` at the top of each of its own 1.5 s scans, so there is no cached mirror that could disagree with the tick, and an untick takes effect within one scan rather than at the next launch — which matters precisely when it matters at all, i.e. the picker is open and in the way right now. The default is `object(forKey:) as? Bool ?? true`, not `bool(forKey:)`, for the reason spelled out on the 🔄 row. What it does when on is in [displays-projector.md](displays-projector.md).
 
+## 📡 Screen sharing — its own menu bar item (2026-11-19)
+
+The screens-and-meetings section (Arrange Monitors, ◀ ASUS ▶, Layout Zoom, PowerPoint Presenter View, Auto Share Faceover, Retina 60 Hz, Retina 1×, Teams Share with Sound) is no longer in 💬. It lives in `ScreenShareMenu`, a second status item of this process that appears only while a projector/external screen is plugged in, Zoom/Teams runs or a share is live. See docs/displays-projector.md.
+
 ## 🖥️ tart VM running
 
 **A second status item, separate from 💬, that exists only while a `tart run` process does** (`TartVMIndicator` + `TartVMPolicy`, 2026-10-05). It reads `🖥️ VM` (or `🖥️ 2 VMs`) — the name only in the tooltip and the menu since 2026-10-30 (Victor: *"în loc de wt-lab să scrie VM"*); its menu has one greyed row per VM (`wt-lab — up 13h 36m · ~/tart`) and a **⏹ Stop wt-lab** row, plus **⏹ Stop all** when there are several.
