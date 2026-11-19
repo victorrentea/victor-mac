@@ -20,13 +20,6 @@ enum ParticipantClockPolicy {
         return f.replacingOccurrences(of: "a", with: "").trimmingCharacters(in: .whitespaces)
     }
 
-    /// Whether the menu bar would draw dark text over this fill (relative
-    /// luminance, the same split macOS makes between a light and a dark bar).
-    static func isLight(_ color: NSColor) -> Bool {
-        guard let c = color.usingColorSpace(.sRGB) else { return false }
-        return 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent > 0.6
-    }
-
     /// `🇵🇹 11:05`, or `🇵🇹 Thu 23:05` when their day is not ours — in the menu
     /// bar clock's hour style, the weekday only when it says something.
     static func label(flag: String, participants: TimeZone, local: TimeZone, at date: Date,
@@ -61,8 +54,9 @@ enum ParticipantClockPolicy {
 /// feel … as close as the menu bar, the same font as the menu bar clock"*).
 /// Click-through, on every Space, never key. Checked once a second (a
 /// `UserDefaults` read); repainted only when the text, the screens or the
-/// visibility change; the colour is resampled on show, on a Space switch and
-/// every 5 minutes.
+/// visibility change. The bar is resampled on show, on a Space switch, when the
+/// frontmost window moves to another screen and every 10 s: Tahoe's bar changes
+/// with what is behind it and whether it is the lit one.
 final class ParticipantClock {
     private struct Tab {
         let panel: NSPanel
@@ -74,9 +68,10 @@ final class ParticipantClock {
     private var timer: Timer?
     private var lastText: String?
     private var lastScreens: [NSRect] = []
-    /// The menu bar colour last sampled per screen frame (the frame is the key
+    /// The menu bar's look last sampled per screen frame (the frame is the key
     /// because `NSScreen` instances are replaced on every reconfiguration).
-    private var barColors: [String: NSColor] = [:]
+    private var barLooks: [String: BarLook] = [:]
+    private var lastActiveScreen: String?
     private var lastSample = Date.distantPast
 
     func start() {
@@ -86,7 +81,7 @@ final class ParticipantClock {
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             self?.lastScreens = []
-            self?.barColors = [:]
+            self?.barLooks = [:]
             self?.tick()
         }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
@@ -103,7 +98,9 @@ final class ParticipantClock {
          "country": BreakCountry.savedToday()?.name ?? NSNull(),
          "frames": tabs.map { t in [Int(t.panel.frame.minX), Int(t.panel.frame.minY),
                                     Int(t.panel.frame.width), Int(t.panel.frame.height)] },
-         "barColors": tabs.map { t in barColors[NSStringFromRect(t.screen.frame)].map(Self.hex) ?? NSNull() as Any }]
+         "bars": tabs.map { t in barLooks[NSStringFromRect(t.screen.frame)].map {
+             ["fill": Self.hex($0.fill), "lightText": $0.lightText, "ink": Double($0.inkStrength)] as [String: Any]
+         } ?? NSNull() as Any }]
     }
 
     func tick() {
@@ -117,7 +114,16 @@ final class ParticipantClock {
         let text = ParticipantClockPolicy.label(flag: country.flag, participants: country.timeZone,
                                                 local: .current, at: now,
                                                 timeFormat: ParticipantClockPolicy.systemTimeFormat)
-        if now.timeIntervalSince(lastSample) > 300 { sampleBarColors() }
+        let active = Self.activeScreenKey()
+        if active != lastActiveScreen {
+            lastActiveScreen = active
+            // The lit menu bar moved: undim one tab, dim another. macOS animates the
+            // change, so sample again once it has settled.
+            sampleBarColors()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.sampleBarColors() }
+        } else if now.timeIntervalSince(lastSample) > 10 {
+            sampleBarColors()
+        }
         let screens = NSScreen.physical
         let frames = screens.map(\.frame)
         guard text != lastText || frames != lastScreens || tabs.isEmpty else { return }
@@ -185,41 +191,59 @@ final class ParticipantClock {
         root.addSubview(label)
         panel.contentView = root
         let tab = Tab(panel: panel, screen: screen, label: label, fill: fill)
-        paint(tab, with: barColors[NSStringFromRect(screen.frame)])
+        paint(tab, with: barLooks[NSStringFromRect(screen.frame)])
         panel.orderFrontRegardless()
         return tab
     }
 
-    private func paint(_ tab: Tab, with bar: NSColor?) {
-        let fill = bar ?? Self.fallbackFill
-        tab.fill.layer?.backgroundColor = fill.cgColor
-        tab.label.textColor = ParticipantClockPolicy.isLight(fill) ? .black : .white
+    private func paint(_ tab: Tab, with look: BarLook?) {
+        tab.fill.layer?.backgroundColor = (look?.fill ?? Self.fallbackFill).cgColor
+        // Full-strength ink faded by the panel's alpha, so the flag fades with the
+        // digits — the same blend macOS uses to dim an inactive screen's bar.
+        tab.label.textColor = (look?.lightText ?? true) ? .white : .black
+        tab.label.alphaValue = look?.inkStrength ?? 1
     }
 
-    /// Averages the top rows of the menu bar over each tab's width — above the
-    /// glyphs, so the clock's own digits do not tint the average.
+    /// One capture of the bar over each tab's width gives everything the tab copies:
+    /// the colour the bar ends with (the fill below it), and the clock's own ink —
+    /// how bright it is against the bar says whether this screen's menu bar is the
+    /// active one (macOS dims the text of the others) and whether the bar is light.
     private func sampleBarColors() {
         guard #available(macOS 14.0, *), !tabs.isEmpty else { return }
         lastSample = Date()
         let targets = tabs.map { (screen: $0.screen, x: $0.panel.frame.minX) }
         Task { @MainActor [weak self] in
             for t in targets {
-                // Near the bar's bottom (4–6 pt above its edge: the last rows carry a darker
-                // line that greyed the Retina's tab), 8 pt clear of the right
-                // edge — under the clock's digits, so what continues below the bar is the colour
-                // the bar ends with (Tahoe's bar is a gradient). Our own tab is excluded.
                 let bottom = t.screen.visibleFrame.maxY
-                let strip = NSRect(x: t.x, y: bottom + 4, width: t.screen.frame.maxX - t.x - 8, height: 2)
-                guard let color = await Self.averageColor(of: strip, on: t.screen) else { continue }
+                let bar = NSRect(x: t.x, y: bottom, width: t.screen.frame.maxX - t.x, height: t.screen.frame.maxY - bottom)
+                guard let image = await Self.capture(bar, on: t.screen),
+                      let look = BarLook(image, barHeight: bar.height, scale: t.screen.backingScaleFactor) else { continue }
                 guard let self else { return }
-                self.barColors[NSStringFromRect(t.screen.frame)] = color
-                for tab in self.tabs where tab.screen.frame == t.screen.frame { self.paint(tab, with: color) }
+                self.barLooks[NSStringFromRect(t.screen.frame)] = look
+                for tab in self.tabs where tab.screen.frame == t.screen.frame { self.paint(tab, with: look) }
             }
         }
     }
 
+    /// The screen whose menu bar is lit: the one holding the frontmost app's
+    /// frontmost window. Polled with the tick, a change resamples at once.
+    private static func activeScreenKey() -> String? {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        for w in list where (w[kCGWindowOwnerPID as String] as? pid_t) == pid
+            && (w[kCGWindowLayer as String] as? Int) == 0 {
+            guard let b = w[kCGWindowBounds as String] as? [String: CGFloat] else { continue }
+            let mid = CGPoint(x: (b["X"] ?? 0) + (b["Width"] ?? 0) / 2, y: (b["Y"] ?? 0) + (b["Height"] ?? 0) / 2)
+            // CG's origin is the primary screen's top-left; flip into AppKit's.
+            let flipped = NSPoint(x: mid.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - mid.y)
+            return NSScreen.screens.first { $0.frame.contains(flipped) }.map { NSStringFromRect($0.frame) }
+        }
+        return nil
+    }
+
     @available(macOS 14.0, *)
-    private static func averageColor(of box: NSRect, on screen: NSScreen) async -> NSColor? {
+    private static func capture(_ box: NSRect, on screen: NSScreen) async -> CGImage? {
         let key = NSDeviceDescriptionKey("NSScreenNumber")
         guard let id = (screen.deviceDescription[key] as? NSNumber)?.uint32Value else { return nil }
         do {
@@ -236,29 +260,14 @@ final class ParticipantClock {
             let frame = screen.frame
             config.sourceRect = CGRect(x: box.minX - frame.minX, y: frame.maxY - box.maxY,
                                        width: box.width, height: box.height)
-            config.width = max(1, Int(box.width.rounded()))
-            config.height = max(1, Int(box.height.rounded()))
+            config.width = max(1, Int((box.width * screen.backingScaleFactor).rounded()))
+            config.height = max(1, Int((box.height * screen.backingScaleFactor).rounded()))
             config.showsCursor = false
-            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-            return average(image)
+            return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
         } catch {
-            overlayError("🕰️ menu bar colour not sampled — \(error.localizedDescription)")
+            overlayError("🕰️ menu bar not sampled — \(error.localizedDescription)")
             return nil
         }
-    }
-
-    private static func average(_ image: CGImage) -> NSColor? {
-        let w = image.width, h = image.height
-        guard w > 0, h > 0 else { return nil }
-        var px = [UInt8](repeating: 0, count: w * h * 4)
-        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-        var r = 0, g = 0, b = 0
-        for i in stride(from: 0, to: px.count, by: 4) { r += Int(px[i]); g += Int(px[i + 1]); b += Int(px[i + 2]) }
-        let n = CGFloat(w * h) * 255
-        return NSColor(srgbRed: CGFloat(r) / n, green: CGFloat(g) / n, blue: CGFloat(b) / n, alpha: 1)
     }
 
     private static func hex(_ c: NSColor) -> String {
@@ -268,3 +277,54 @@ final class ParticipantClock {
     }
 }
 
+
+/// What a tab copies from the bar above it, read off one capture of it.
+struct BarLook {
+    /// The bar's colour 4–6 pt above its bottom edge (its last rows carry a
+    /// darker line), the right 8 pt left out — what continues below the bar.
+    let fill: NSColor
+    /// Whether the clock is drawn light on this bar (Tahoe flips to dark ink on a light one).
+    let lightText: Bool
+    /// The clock ink's contrast against the bar, relative to pure white/black on
+    /// it: ~1 on the lit menu bar, ~0.5 on the dimmed ones.
+    let inkStrength: CGFloat
+
+    init?(_ image: CGImage, barHeight: CGFloat, scale: CGFloat) {
+        let w = image.width, h = image.height
+        guard w > 0, h > 0 else { return nil }
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        // Row 0 of `px` is the top of the bar.
+        func rgb(_ x: Int, _ y: Int) -> (Double, Double, Double) {
+            let i = (y * w + x) * 4
+            return (Double(px[i]) / 255, Double(px[i + 1]) / 255, Double(px[i + 2]) / 255)
+        }
+        let right = max(1, w - Int(8 * scale))
+        let y0 = max(0, h - Int(6 * scale)), y1 = max(y0 + 1, h - Int(4 * scale))
+        var s = (0.0, 0.0, 0.0), n = 0.0
+        for y in y0..<min(y1, h) { for x in 0..<right { let c = rgb(x, y); s.0 += c.0; s.1 += c.1; s.2 += c.2; n += 1 } }
+        guard n > 0 else { return nil }
+        let fill = (s.0 / n, s.1 / n, s.2 / n)
+        // The clock's digits: the last ~50 pt of the bar, 3 pt in from its edges.
+        let left = max(0, w - Int(50 * scale))
+        let top = Int(3 * scale), low = max(top + 1, h - Int(3 * scale))
+        var bg = (0.0, 0.0, 0.0), m = 0.0
+        for y in top..<low { for x in left..<right { let c = rgb(x, y); bg.0 += c.0; bg.1 += c.1; bg.2 += c.2; m += 1 } }
+        guard m > 0 else { return nil }
+        bg = (bg.0 / m, bg.1 / m, bg.2 / m)
+        func luma(_ c: (Double, Double, Double)) -> Double { 0.2126 * c.0 + 0.7152 * c.1 + 0.0722 * c.2 }
+        var ink = bg, far = 0.0
+        for y in top..<low { for x in left..<right {
+            let c = rgb(x, y), d = abs(luma(c) - luma(bg))
+            if d > far { far = d; ink = c }
+        } }
+        let light = luma(ink) >= luma(bg)
+        let room = light ? 1 - luma(bg) : luma(bg)
+        self.fill = NSColor(srgbRed: fill.0, green: fill.1, blue: fill.2, alpha: 1)
+        self.lightText = light
+        self.inkStrength = room > 0.05 ? CGFloat(min(1, max(0.3, far / room))) : 1
+    }
+}
