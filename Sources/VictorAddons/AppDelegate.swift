@@ -172,7 +172,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var zoomSharePrep: ZoomSharePrep?
     /// 🎞️ The Retina at 60 Hz while Zoom or Teams runs.
     private let retinaCap = RetinaRefreshCap()
-    /// 🔻 The Retina at 1× while Zoom or Teams shares.
+    /// 🔻 The Retina at its Default 1728×1117 while Zoom or Teams shares.
     private let retinaShareRes = RetinaShareResolution()
     /// 🔊 The old volume HUD, bottom centre, instead of Tahoe's corner pill.
     private let volumeHUD = VolumeHUD()
@@ -1980,7 +1980,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         // 📡🎙️ While Victor screen-shares in Zoom or Teams, measure his voice on
         // the mic the meeting uses; the effects app holds every effect under it.
-        // 🔻 …and the Retina drops to 1× for the share's duration (a mode left over
+        // 🔻 …and the Retina switches to Default 1728×1117 for the share's duration (a mode left over
         // from a crash mid-share is given back by the first apply()).
         screenShareMenu.onToggleRetinaShareRes = { [weak self] in self?.retinaShareRes.apply() }
         retinaShareRes.apply()

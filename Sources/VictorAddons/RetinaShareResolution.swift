@@ -2,11 +2,11 @@ import AppKit
 
 enum RetinaShareResolutionSettings {
     static let enabledKey = "RetinaShareResolution.enabled"
-    /// The Retina's mode before the drop, kept on disk so a crash or a redeploy
+    /// The Retina's mode before the share, kept on disk so a crash or a redeploy
     /// mid-share still gives it back: "width,height,pixelWidth,pixelHeight".
     static let restoreKey = "RetinaShareResolution.restoreMode"
 
-    /// On by default: Victor asked for it (2026-11-13).
+    /// On by default: Victor asked for it (2026-11-13; target changed to Default 2026-11-19).
     static var isEnabled: Bool {
         get { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: enabledKey) }
@@ -21,21 +21,19 @@ enum RetinaShareResolutionSettings {
     }
 }
 
-/// 🔻 While Zoom or Teams **shares**, the Retina drops to the same size in points
-/// at **1×** (1728×1118 px instead of 3456×2234 — 4.4× fewer pixels), and gets its
-/// Retina mode back when the share ends (Victor, 2026-11-13: *"change the resolution
-/// of the retina to a compatible resolution but lower when sharing with Zoom"*).
+/// 🔻 While Zoom or Teams **shares**, the Retina switches to its **Default** mode —
+/// 1728×1117 @2× (3456×2234 px), the "(Default)" row in System Settings › Displays —
+/// and gets the mode it had before back when the share ends (Victor, 2026-11-19:
+/// *"select 1728 × 1117 (Default) as the resolution when screen sharing"*).
 ///
-/// **Why.** Measured that afternoon: Zoom sharing the Retina kept WindowServer at
-/// 100–118 % CPU and the cursor lagged on every screen; pausing the share alone took
-/// it to ~60 %. WindowServer composites each frame on essentially one thread, so the
-/// idle cores don't help — the only lever is fewer pixels per frame. The room sees
-/// the share at ≤ 1080p anyway; only the laptop panel itself looks softer meanwhile.
+/// **History.** From 2026-11-13 this dropped to the **1×** mode nearest in points
+/// (1728×1118 px, 4.4× fewer pixels) to spare WindowServer, which sat at 100–118 % CPU
+/// sharing the Retina in Zoom on 4 displays. On 2026-11-19 Victor, mid-share, put the
+/// Retina back on Default by hand and asked for it to be the share mode instead.
 ///
-/// **Same points, so nothing moves:** the 1× mode is picked by size in points closest
-/// to the current one (1728×1117 → 1728×1118), at the current refresh, so windows,
-/// the 🪞 cut-out and every saved Retina coordinate stay where they are. Session-only
-/// (`CGConfigureDisplayWithDisplayMode … .forSession`). Main thread only.
+/// The mode is the one macOS flags as default (`ioFlags` bit 0x4, only set on one
+/// refresh), taken at the **current** refresh, so 🎞️ `RetinaRefreshCap` keeps its say.
+/// Session-only (`CGConfigureDisplayWithDisplayMode … .forSession`). Main thread only.
 ///
 /// Lives beside 🎞️ `RetinaRefreshCap` and doesn't fight it: each matches the mode the
 /// other left — this one restores the *size* at whatever refresh is current.
@@ -45,26 +43,27 @@ final class RetinaShareResolution {
         didSet { apply() }
     }
 
-    /// Drop or restore, from the setting and `sharing`. Idempotent.
+    /// Switch to Default or restore, from the setting and `sharing`. Idempotent.
     func apply() {
         guard let id = RetinaRefreshCap.builtInDisplay(), let current = CGDisplayCopyDisplayMode(id) else { return }
         if RetinaShareResolutionSettings.isEnabled && sharing {
-            guard current.pixelWidth > current.width else { return }   // already 1×
-            guard let low = Self.oneX(of: id, near: current) else {
-                overlayInfo("🔻 RetinaShareResolution: no 1× mode near \(current.width)×\(current.height)")
+            guard let target = Self.defaultMode(of: id, hz: current.refreshRate) else {
+                overlayInfo("🔻 RetinaShareResolution: no Default mode on the Retina")
                 return
             }
+            guard current.width != target.width || current.height != target.height
+                    || current.pixelWidth != target.pixelWidth else { return }   // already Default
             if RetinaShareResolutionSettings.restoreMode == nil {
                 RetinaShareResolutionSettings.restoreMode = [current.width, current.height, current.pixelWidth, current.pixelHeight]
             }
-            let err = Self.set(low, on: id)
-            overlayInfo("🔻 RetinaShareResolution: sharing → Retina \(current.pixelWidth)×\(current.pixelHeight) → \(low.pixelWidth)×\(low.pixelHeight) (err \(err))")
+            let err = Self.set(target, on: id)
+            overlayInfo("🔻 RetinaShareResolution: sharing → Retina \(current.width)×\(current.height) → Default \(target.width)×\(target.height) (err \(err))")
         } else {
             restore()
         }
     }
 
-    /// The Retina mode from before the drop, if there is one to give back.
+    /// The Retina mode from before the share, if there is one to give back.
     func restore() {
         guard let saved = RetinaShareResolutionSettings.restoreMode else { return }
         RetinaShareResolutionSettings.restoreMode = nil
@@ -91,13 +90,16 @@ final class RetinaShareResolution {
         return (CGDisplayCopyAllDisplayModes(id, options) as? [CGDisplayMode]) ?? []
     }
 
-    /// The usable 1× mode whose size in points is closest to `current`'s, at its refresh.
-    static func oneX(of id: CGDirectDisplayID, near current: CGDisplayMode) -> CGDisplayMode? {
-        allModes(id)
-            .filter { $0.pixelWidth == $0.width && $0.isUsableForDesktopGUI()
-                && abs($0.refreshRate - current.refreshRate) < 0.5 }
-            .min { abs($0.width - current.width) + abs($0.height - current.height)
-                < abs($1.width - current.width) + abs($1.height - current.height) }
+    /// The Retina's Default mode (the size macOS flags `kDisplayModeDefaultFlag`, 0x4 —
+    /// set on one refresh only), at `hz` if that size has it, else the flagged one.
+    static func defaultMode(of id: CGDirectDisplayID, hz: Double) -> CGDisplayMode? {
+        let modes = allModes(id).filter { $0.isUsableForDesktopGUI() }
+        guard let flagged = modes.first(where: { $0.ioFlags & 0x4 != 0 }) else { return nil }
+        let same = modes.filter {
+            $0.width == flagged.width && $0.height == flagged.height
+                && $0.pixelWidth == flagged.pixelWidth && $0.pixelHeight == flagged.pixelHeight
+        }
+        return same.first { abs($0.refreshRate - hz) < 0.5 } ?? flagged
     }
 
     /// The mode with the saved size (points and pixels), at `hz` if it exists, else any refresh.

@@ -37,7 +37,7 @@ enum ScreenShareMenuPolicy {
 ///
 /// The screens-and-meetings section left 💬 for this one: Arrange Monitors, the
 /// ◀ ASUS ▶ flip, 🎥 Layout Zoom/Teams, 🖥️ PowerPoint Presenter View, 🔊 Auto
-/// Share Faceover, 🎞️ Retina 60 Hz, 🔻 Retina 1× and 🔊 Teams Share with Sound.
+/// Share Faceover, 🎞️ Retina 60 Hz, 🔻 Retina Default while sharing and 🔊 Teams Share with Sound.
 /// Same process, same settings, same code paths — only the rows moved.
 ///
 /// The item **exists only while something is shared or about to be**
@@ -56,7 +56,7 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
     var onLayoutZoom: (() -> Void)?
     /// 🎞️ Retina 60 Hz ticked/unticked: cap or give the refresh back now.
     var onToggleRetinaCap: (() -> Void)?
-    /// 🔻 Retina 1× while sharing ticked/unticked: drop or give the resolution back now.
+    /// 🔻 Retina Default while sharing ticked/unticked: switch or give the resolution back now.
     var onToggleRetinaShareRes: (() -> Void)?
     /// Whether Zoom/Teams is sharing right now (`MeetingShareWatch.isSharing`).
     var isSharing: (() -> Bool)?
@@ -210,7 +210,7 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
             tip: "While Zoom or Teams runs, the Retina refreshes at 60 Hz at most (120 Hz ProMotion otherwise). The share and the projector never get more than 60. Given back when the last of them quits.")
         add(MenuBarManager.ticked(Self.retinaShareResTitle, RetinaShareResolutionSettings.isEnabled),
             icon: MenuBarManager.emojiIcon("🔻"), action: #selector(toggleRetinaShareResAction),
-            tip: "While Zoom or Teams shares, the Retina runs at 1× (1728×1118 px instead of 3456×2234) — same layout, nothing moves, but WindowServer captures 4.4× fewer pixels per frame, so the cursor stops lagging. The panel looks softer meanwhile; the Retina mode comes back when the share ends.")
+            tip: "While Zoom or Teams shares, the Retina runs at its Default resolution, 1728 × 1117 (sharp, 2×). The mode it had before comes back when the share ends.")
     }
 
     /// Row titles as the menu would show them — `/test/share-menu` reports them.
@@ -257,7 +257,7 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
         RetinaRefreshCapSettings.isEnabled.toggle()
         onToggleRetinaCap?()
     }
-    /// Acts on the tick, like 🎞️: a dropped Retina is given back now.
+    /// Acts on the tick, like 🎞️: a switched Retina is given back now.
     @objc private func toggleRetinaShareResAction() {
         RetinaShareResolutionSettings.isEnabled.toggle()
         onToggleRetinaShareRes?()
@@ -265,7 +265,7 @@ final class ScreenShareMenu: NSObject, NSMenuDelegate {
 
     static let faceoverTitle = "Auto Share Faceover"
     static let retinaCapTitle = "Retina 60 Hz in Zoom/Teams"
-    static let retinaShareResTitle = "Retina 1× while sharing"
+    static let retinaShareResTitle = "Retina 1728×1117 while sharing"
     static let teamsShareSoundTitle = "Teams Share with Sound"
     static let pptPresenterTitle = "PowerPoint Presenter View → left screen"
 

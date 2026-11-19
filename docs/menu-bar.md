@@ -102,7 +102,7 @@ That last case is what put the row here, on 2026-09-22: a Codex run was driving 
 
 ## 📡 Screen sharing — its own menu bar item (2026-11-19)
 
-The screens-and-meetings section (Arrange Monitors, ◀ ASUS ▶, Layout Zoom, PowerPoint Presenter View, Auto Share Faceover, Retina 60 Hz, Retina 1×, Teams Share with Sound) is no longer in 💬. It lives in `ScreenShareMenu`, a second status item of this process that appears only while a projector/external screen is plugged in, Zoom/Teams runs or a share is live. See docs/displays-projector.md.
+The screens-and-meetings section (Arrange Monitors, ◀ ASUS ▶, Layout Zoom, PowerPoint Presenter View, Auto Share Faceover, Retina 60 Hz, Retina 1728×1117, Teams Share with Sound) is no longer in 💬. It lives in `ScreenShareMenu`, a second status item of this process that appears only while a projector/external screen is plugged in, Zoom/Teams runs or a share is live. See docs/displays-projector.md.
 
 ## 🖥️ tart VM running
 

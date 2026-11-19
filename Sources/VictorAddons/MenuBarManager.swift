@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 19, 13:04"
+    static let BUILD_TIME = "Nov 19, 13:08"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -673,7 +673,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         menu.addItem(extraItem)
 
         // The screens-and-meetings section (Arrange Monitors, ◀ ASUS ▶, 🎥 Layout
-        // Zoom, 🖥️ Presenter View, 🔊 Faceover, 🎞️ 60 Hz, 🔻 1×, 🔊 Teams sound)
+        // Zoom, 🖥️ Presenter View, 🔊 Faceover, 🎞️ 60 Hz, 🔻 Retina Default, 🔊 Teams sound)
         // left for its own 📡 menu bar item on 2026-11-19 — `ScreenShareMenu`,
         // which is on the bar only while something is shared or about to be.
         menu.addItem(.separator())
