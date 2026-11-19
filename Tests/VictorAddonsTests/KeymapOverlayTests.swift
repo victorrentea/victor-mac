@@ -437,7 +437,8 @@ final class KeymapOverlayTests: XCTestCase {
         // elephant on 2026-10-15, when O (31) went to the 🤖 Opus head.
         // X (7) joined on 2026-10-20 with the Codex terminal.
         // 0 (29) joined on 2026-11-12 with ✨ Fable descends, the first digit on the sheet.
-        XCTAssertEqual(CommandControlShortcuts.boundKeyCodes, [0, 2, 8, 12, 14, 3, 5, 40, 37, 46, 45, 15, 1, 16, 17, 9, 13, 6, 31, 34, 35, 32, 7, 29])
+        // 9 (25) joined on 2026-11-19 with the 🪲 beetle walk.
+        XCTAssertEqual(CommandControlShortcuts.boundKeyCodes, [0, 2, 8, 12, 14, 3, 5, 40, 37, 46, 45, 15, 1, 16, 17, 9, 13, 6, 31, 34, 35, 32, 7, 29, 25])
         XCTAssertEqual(CommandControlShortcuts.labels[32], "trump")
         XCTAssertEqual(CommandControlShortcuts.labels[12], "salut")
         XCTAssertEqual(CommandControlShortcuts.labels[2], "dictate")

@@ -65,6 +65,8 @@ enum CommandControlShortcuts {
                          // screen and bursts, on a transparent background
                          // (2026-11-12, Victor's Gemini clip). The digit row was
                          // empty on this board; the word names the model it stands for.
+        25: "bug",       // 9 — 🪲 a beetle walks from the low right of the screen to
+                         // the upper left, legs looping, and fades (2026-11-19).
         34: "xi",        // I — 🐼 the panda, the elephant's twin from the right
                          // half of the screen, on the key next to it. Named
                          // after the man like "trump", for the same reason.
