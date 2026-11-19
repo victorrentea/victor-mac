@@ -2258,6 +2258,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             // Same as the elephant: drawn by Victor Effects, keyed here.
             EffectsProxy.fire("/effect/bug")
         }
+        eventTap.onShowGrilled = {
+            // Same as the elephant: drawn by Victor Effects, keyed here.
+            EffectsProxy.fire("/effect/grilled")
+        }
         eventTap.onShowPanda = {
             // Same as the elephant: drawn by Victor Effects, keyed here.
             EffectsProxy.fire("/effect/panda")
