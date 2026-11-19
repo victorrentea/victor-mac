@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 19, 13:08"
+    static let BUILD_TIME = "Nov 19, 13:45"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -101,6 +101,8 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private var transcribeSubmenu: NSMenu!
 
     private(set) var resumeItem: NSMenuItem!
+    /// ☕️ Break duration rows, with their plain titles — one of them gets the 👈.
+    private var breakDurationItems: [(item: NSMenuItem, title: String, minutes: Int)] = []
 
     /// When the last break ended (✕ or expiry). Persisted so the "Resumed Xm ago"
     /// clock survives an app restart mid-workshop.
@@ -268,6 +270,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             item.isEnabled = true
             item.representedObject = minutes
             breakSubmenu.addItem(item)
+            breakDurationItems.append((item, title, minutes))
         }
         // ⏱️ Timer, under a line (2026-10-06, Victor): the same watch counting UP
         // from zero, to measure how long something took. It lives with the breaks
@@ -911,7 +914,17 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         } else {
             applyResumedTitle("⏱️ Resumed -", urgency: .fresh)
         }
+        refreshBreakRecommendation()
 
+    }
+
+    /// 👈 next to the break length that fits the time since the last break
+    /// (`BreakRecommendation`): 10 / 12 / 15 minutes.
+    private func refreshBreakRecommendation() {
+        let pick = BreakRecommendation.minutes(sinceBreakEnded: breakEndedAt.map { Date().timeIntervalSince($0) })
+        for row in breakDurationItems {
+            row.item.title = row.minutes == pick ? "\(row.title)  \(BreakRecommendation.finger)" : row.title
+        }
     }
 
     /// Colour the "Resumed …" row once a break is due, so the glance is enough.
