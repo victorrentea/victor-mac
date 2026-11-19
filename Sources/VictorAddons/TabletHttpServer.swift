@@ -136,6 +136,7 @@ case testTerminalFont
         /// 🔻 `RetinaShareResolution`: pretend a share (`sharing=`), move the tick (`on=`).
         case testRetinaShareRes([String: String])
         case testShareMenu([String: String])
+        case testParticipantClock
         /// JSON snapshot of Zoom's join-preview dialog + a forced re-press of it.
         case testZoomJoin
         /// 🎥 Layout Zoom: start a run (unless `run=0`) and return the last report.
@@ -381,6 +382,8 @@ case testTerminalFont
     var onTestRetinaCap: (([String: String]) -> String)?
     /// `/test/share-menu` — 📡 the screen-share menu bar item (`ScreenShareMenu`).
     var onTestShareMenu: (([String: String]) -> String)?
+    /// `/test/participant-clock` — 🕰️ (`ParticipantClock`).
+    var onTestParticipantClock: (() -> String)?
     /// 🔻 `RetinaShareResolution` — the query, as given.
     var onTestRetinaShareRes: (([String: String]) -> String)?
     var onTestZoomJoin: (() -> String)?
@@ -769,6 +772,10 @@ case testTerminalFont
                 contentType = "application/json"
                 body = self.onTestShareMenu?(query) ?? "{\"error\":\"unavailable\"}"
                 if self.onTestShareMenu == nil { statusCode = 503 }
+            case .testParticipantClock:
+                contentType = "application/json"
+                body = self.onTestParticipantClock?() ?? "{\"error\":\"unavailable\"}"
+                if self.onTestParticipantClock == nil { statusCode = 503 }
             case .testZoomJoin:
                 contentType = "application/json"
                 body = self.onTestZoomJoin?() ?? "{\"error\":\"unavailable\"}"
@@ -1201,6 +1208,8 @@ case testTerminalFont
         case "/test/retina-share-res":
             return .testRetinaShareRes(Dictionary(queryItems.compactMap { i in i.value.map { (i.name, $0) } },
                                                   uniquingKeysWith: { _, last in last }))
+        case "/test/participant-clock":
+            return .testParticipantClock
         case "/test/share-menu":
             return .testShareMenu(Dictionary(queryItems.compactMap { i in i.value.map { (i.name, $0) } },
                                              uniquingKeysWith: { _, last in last }))

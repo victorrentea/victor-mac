@@ -166,6 +166,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private let shareWatch = MeetingShareWatch()
     /// 📡 The screen-share menu bar item — every share/projector row, out of 💬.
     private let screenShareMenu = ScreenShareMenu()
+    /// 🕰️ The participants' time under the menu bar clock (today's ☕️ country).
+    private let participantClock = ParticipantClock()
     /// 🔊 Ticks "Share sound" (+ picks the presenter layout) in Zoom's share picker.
     private var zoomSharePrep: ZoomSharePrep?
     /// 🎞️ The Retina at 60 Hz while Zoom or Teams runs.
@@ -1559,6 +1561,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             let data = (try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])) ?? Data()
             return String(data: data, encoding: .utf8) ?? "{}"
         }
+        // /test/participant-clock — 🕰️ shown?, its text, today's country, panel frames.
+        tabletServer?.onTestParticipantClock = { [weak self] in
+            guard let self else { return "{\"error\":\"unavailable\"}" }
+            self.participantClock.tick()
+            let data = (try? JSONSerialization.data(withJSONObject: self.participantClock.snapshot, options: [.sortedKeys])) ?? Data()
+            return String(data: data, encoding: .utf8) ?? "{}"
+        }
         tabletServer?.onTestPresentation = { [weak self] in
             self?.presentationSnapshotJSON() ?? "{\"error\":\"unavailable\"}"
         }
@@ -1874,8 +1883,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
         // 🌍 Pick the country whose local time the Break overlay shows.
         menuBarManager.onPickCountry = { [weak self] country in
-            DispatchQueue.main.async { self?.breakTimer.selectCountry(country) }
+            DispatchQueue.main.async {
+                self?.breakTimer.selectCountry(country)
+                self?.participantClock.tick()
+            }
         }
+        participantClock.start()
         menuBarManager.onStopwatch = { [weak self] in
             DispatchQueue.main.async { self?.stopwatch.startStopwatch() }
         }

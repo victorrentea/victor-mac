@@ -156,7 +156,7 @@ extension BreakCountry {
     /// The country stored for **today** (a manual dropdown pick, or the auto-pick
     /// locked in at the day's first timer start), or nil if nothing is stored yet
     /// today. Read-only — no side effects.
-    private static func savedToday() -> BreakCountry? {
+    static func savedToday() -> BreakCountry? {
         guard UserDefaults.standard.string(forKey: kSelectedDay) == todayKey(),
               let tz = UserDefaults.standard.string(forKey: kSelectedTZ),
               let c = all.first(where: { $0.tz == tz }) else {
