@@ -124,7 +124,11 @@ final class ParticipantClock {
         } else if now.timeIntervalSince(lastSample) > 10 {
             sampleBarColors()
         }
-        let screens = NSScreen.physical
+        // Never on the built-in Retina (Victor: "nu mai pune pe retina deloc"): its bar
+        // fades into what is below it and no flat tab under it looked right. The Retina
+        // alone → no clock at all.
+        let screens = NSScreen.physical.filter { !Self.isBuiltin($0) }
+        guard !screens.isEmpty else { hide(); return }
         let frames = screens.map(\.frame)
         guard text != lastText || frames != lastScreens || tabs.isEmpty else { return }
         let wasEmpty = tabs.isEmpty
@@ -202,6 +206,12 @@ final class ParticipantClock {
         // digits — the same blend macOS uses to dim an inactive screen's bar.
         tab.label.textColor = (look?.lightText ?? true) ? .white : .black
         tab.label.alphaValue = look?.inkStrength ?? 1
+    }
+
+    private static func isBuiltin(_ screen: NSScreen) -> Bool {
+        let key = NSDeviceDescriptionKey("NSScreenNumber")
+        guard let id = (screen.deviceDescription[key] as? NSNumber)?.uint32Value else { return false }
+        return CGDisplayIsBuiltin(id) != 0
     }
 
     /// One capture of the bar over each tab's width gives everything the tab copies:
