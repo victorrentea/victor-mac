@@ -119,6 +119,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var phoneLowBatteryTimer: Timer?
     /// ✈️ Airline "check-in is open" mails → a click-to-open pill (docs/checkin-alarm.md).
     private var checkInWatch: CheckInMailWatch?
+    /// 🌿 "petclinic is on main" while a training session runs.
+    private let petclinicBranchWarning = PetclinicBranchWarning()
     private var memoryPressure: MemoryPressureMonitor?
     /// 🔒 Mac screen locked → the tablet goes into standby (dim, no thumbnails).
     private var screenLock: ScreenLockMonitor?
@@ -1167,6 +1169,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 checkInAlarm.clearAll()
             }
             return checkInWatch.diagnosticsJSON
+        }
+        // 🌿 Test hooks for the "petclinic is on main" pill (docs/petclinic-branch.md).
+        tabletServer?.onTestPetclinicBranch = { [weak self] sub in
+            guard let w = self?.petclinicBranchWarning else { return "{\"error\":\"unavailable\"}" }
+            switch sub {
+            case "/simulate":
+                w.simulate(screens: { NSScreen.physical.filter { !$0.localizedName.localizedCaseInsensitiveContains("built-in") } })
+            case "/clear":
+                w.clearSimulation()
+            case "/undismiss":
+                w.resetDismissal()
+            default: break
+            }
+            return w.stateJSON()
         }
         // 🟥 Memory pressure → the menu bar icon flashes on a red plate. The
         // trigger is the *compressor*, not the swap file — see
@@ -3177,6 +3193,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                                       showJoinLink: Bool = false) {
         isSessionActive = true
         sessionLastDay = lastDay
+        petclinicBranchWarning.setSessionActive(true)
         self.participantUrl = stripProtocolPrefix(from: participantUrl)
         if let folder = sessionFolder, !folder.isEmpty {
             ScreenshotManager.sessionFolder = URL(fileURLWithPath: folder)
@@ -3202,6 +3219,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
     private func handleSessionEnded() {
         isSessionActive = false
+        petclinicBranchWarning.setSessionActive(false)
         participantUrl = nil
         sessionLastDay = nil
         ScreenshotManager.sessionFolder = nil

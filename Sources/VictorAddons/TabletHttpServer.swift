@@ -203,6 +203,8 @@ case testTerminalFont
         /// Gmail now, `/simulate` raises a fake pill off the retina
         /// (`/simulate/all` on every screen), `/clear` empties the queue.
         case testCheckIn(String)
+        /// 🌿 petclinic-on-main pill: state, `/simulate`, `/clear`, `/undismiss`.
+        case testPetclinicBranch(String)
         /// JSON snapshot of the 🔒 screen-lock mirror the tablet uses to go into
         /// standby: whether the Mac reports itself locked right now (test hook).
         case testMemoryPressure
@@ -430,6 +432,8 @@ case testTerminalFont
     var onTestPhoneBatterySimulate: ((Int) -> String)?
     /// ✈️ check-in alarm hooks; the argument is the sub-path (see `.testCheckIn`).
     var onTestCheckIn: ((String) -> String)?
+    /// 🌿 petclinic-on-main pill hooks; the argument is the sub-path.
+    var onTestPetclinicBranch: ((String) -> String)?
     /// Read-only JSON snapshot of the 🟥 memory-pressure watch.
     var onTestMemoryPressure: (() -> String)?
     /// Force the red plate on (`1`), off (`0`) or back to measured (`auto`).
@@ -862,6 +866,10 @@ case testTerminalFont
                 contentType = "application/json"
                 body = self.onTestCheckIn?(sub) ?? "{\"error\":\"check-in watch unavailable\"}"
                 if self.onTestCheckIn == nil { statusCode = 503 }
+            case .testPetclinicBranch(let sub):
+                contentType = "application/json"
+                body = self.onTestPetclinicBranch?(sub) ?? "{\"error\":\"petclinic branch warning unavailable\"}"
+                if self.onTestPetclinicBranch == nil { statusCode = 503 }
             case .testMemoryPressure:
                 contentType = "application/json"
                 body = self.onTestMemoryPressure?() ?? "{\"error\":\"memory pressure monitor unavailable\"}"
@@ -1391,6 +1399,9 @@ case testTerminalFont
             if pathOnly.hasPrefix("/test/video/") {
                 let id = String(pathOnly.dropFirst("/test/video/".count))
                 if !id.isEmpty { return .videoPlay(id, nil) }
+            }
+            if pathOnly == "/test/petclinic-branch" || pathOnly.hasPrefix("/test/petclinic-branch/") {
+                return .testPetclinicBranch(String(pathOnly.dropFirst("/test/petclinic-branch".count)))
             }
             if pathOnly == "/test/checkin" || pathOnly.hasPrefix("/test/checkin/") {
                 return .testCheckIn(String(pathOnly.dropFirst("/test/checkin".count)))
