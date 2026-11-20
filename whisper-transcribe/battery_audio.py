@@ -32,6 +32,8 @@ from pathlib import Path
 
 import numpy as np
 
+from speaker_id import looks_like_noise
+
 SAMPLE_RATE = 16000
 DIR_NAME = "battery-audio"
 SUFFIX = ".s16le16k.pcm"
@@ -379,7 +381,10 @@ class BacklogTranscriber:
             ):
                 continue  # the room channel's echo of what the mic already wrote
             when = datetime.fromtimestamp(at)
-            by_day.setdefault(when.strftime("%Y-%m-%d"), []).append(f"[{when:%H:%M}] {text}")
+            # The loopback is only ever the other side of a call (Victor always
+            # joins through this Mac), so its lines are 👥 here too; noise none.
+            glyph = "👥 " if label != self._me and not looks_like_noise(text) else ""
+            by_day.setdefault(when.strftime("%Y-%m-%d"), []).append(f"[{when:%H:%M}] {glyph}{text}")
         for day, lines in by_day.items():
             self._write_lines(day, lines)
         for rec in group:

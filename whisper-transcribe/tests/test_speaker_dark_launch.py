@@ -420,3 +420,87 @@ class TestWhisperPadsEveryInputToThirtySeconds:
         res = _result((0.0, 4.0, "una"), (4.0, 29.98, "alta"))
         rows = wr._score_speakers(scorer, _audio(12), res, _chunk_text(res))
         assert [(r[0], r[1]) for r in rows] == [(0.0, 4.0), (4.0, 12.0)]
+
+
+class TestTheChannelBeatsTheVoiceprint:
+    """Victor, 2026-11-20: he always joins calls through this Mac.
+
+    So the loopback is never him, and during a call his mic is nobody else
+    unless the voiceprint positively says so. Noise gets no mark either way.
+    """
+
+    def _lines(self, tmp_path):
+        return [l for l in _transcript(tmp_path).splitlines() if l.strip()]
+
+    def test_a_call_line_is_audience_even_when_the_voiceprint_says_victor(self, tmp_path):
+        r = _runner(tmp_path)
+        r._on_segment("Audience", "ro", "eu cred că merge", "", _Verdict("Victor", 0.8))
+        assert self._lines(tmp_path)[-1].endswith("] 👥 eu cred că merge")
+
+    def test_a_call_line_is_audience_even_with_scoring_off(self, tmp_path):
+        r = _runner(tmp_path)
+        r._on_segment("Audience", "ro", "eu cred că merge", "")
+        assert self._lines(tmp_path)[-1].endswith("] 👥 eu cred că merge")
+        assert not list(tmp_path.glob("*-speakers.jsonl"))
+
+    def test_during_a_call_the_abstain_band_on_the_mic_is_victor(self, tmp_path):
+        r = _runner(tmp_path)
+        r._on_segment("Audience", "ro", "ai o întrebare", "", _Verdict(None, 0.3))
+        r._on_segment("Victor", "ro", "da, uite cum", "🎤", _Verdict(None, 0.3, "abstain"))
+        assert self._lines(tmp_path)[-1].endswith("] 🎙️ da, uite cum")
+
+    def test_during_a_call_a_strong_no_on_the_mic_is_still_audience(self, tmp_path):
+        r = _runner(tmp_path)
+        r._on_segment("Audience", "ro", "ai o întrebare", "", _Verdict(None, 0.3))
+        r._on_segment("Victor", "ro", "tati, vino", "🎤", _Verdict("Audience", 0.05))
+        assert self._lines(tmp_path)[-1].endswith("] 👥 tati, vino")
+
+    def test_outside_a_call_the_mic_follows_the_voiceprint(self, tmp_path):
+        r = _runner(tmp_path)
+        r._on_segment("Victor", "ro", "hmm ceva", "🎤", _Verdict(None, 0.3, "abstain"))
+        assert self._lines(tmp_path)[-1].endswith("] hmm ceva")
+
+    def test_the_call_ends_after_the_window(self, tmp_path, monkeypatch):
+        r = _runner(tmp_path)
+        r._on_segment("Audience", "ro", "ai o întrebare", "", _Verdict(None, 0.3))
+        r._last_call_speech -= wr._CALL_WINDOW_SEC + 1
+        r._on_segment("Victor", "ro", "hmm ceva", "🎤", _Verdict(None, 0.3, "abstain"))
+        assert self._lines(tmp_path)[-1].endswith("] hmm ceva")
+
+    def test_noise_on_the_loopback_gets_no_mark_and_does_not_start_a_call(self, tmp_path):
+        r = _runner(tmp_path)
+        r._on_segment("Audience", "ro", "Spira za bilata pu元mi 수리입니다", "", _Verdict("Audience", 0.1))
+        assert self._lines(tmp_path)[-1].endswith("] Spira za bilata pu元mi 수리입니다")
+        assert r._last_call_speech == 0.0
+
+    def test_noise_on_the_mic_gets_no_mark_even_if_the_voiceprint_says_victor(self, tmp_path):
+        r = _runner(tmp_path)
+        r._on_segment("Victor", "ro", "Somente value é integral", "🎤", _Verdict("Victor", 0.7))
+        assert self._lines(tmp_path)[-1].endswith("] Somente value é integral")
+
+    def test_the_jsonl_row_carries_channel_mic_and_loudness(self, tmp_path):
+        r = _runner(tmp_path)
+        audio = np.full(16000 * 4, 0.1, dtype=np.float32)
+        r._on_segment("Victor", "ro", "salut lume", "🎤", _Verdict("Victor", 0.8), audio=audio)
+        row = _verdicts(tmp_path)[0]
+        assert row["label"] == "Victor" and row["shown"] == "Victor"
+        assert row["channel"] == "mic" and row["in_call"] is False and row["mic"] == "🎤"
+        assert row["rms"] == pytest.approx(0.1, abs=1e-4)
+        assert row["dbfs"] == pytest.approx(-20.0, abs=0.1)
+
+    def test_an_overruled_voiceprint_keeps_its_own_label_in_the_jsonl(self, tmp_path):
+        r = _runner(tmp_path)
+        r._on_segment("Audience", "ro", "eu cred că merge", "", _Verdict("Victor", 0.8))
+        row = _verdicts(tmp_path)[0]
+        assert (row["label"], row["shown"], row["rule"], row["channel"]) == (
+            "Victor", "Audience", "call-channel", "call")
+
+
+@pytest.mark.parametrize("text", ["„Salut”, zise el — gata…", "Știință și țară", "plain english"])
+def test_romanian_and_english_are_never_noise(text):
+    assert not sid.looks_like_noise(text)
+
+
+@pytest.mark.parametrize("text", ["いた", "Somente value é integral", "수리입니다", "Leçon"])
+def test_other_alphabets_are_noise(text):
+    assert sid.looks_like_noise(text)

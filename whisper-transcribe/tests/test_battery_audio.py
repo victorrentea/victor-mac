@@ -181,3 +181,20 @@ def test_a_file_still_being_written_is_left_alone(tmp_path):
     pcm = _record(tmp_path, "Victor", datetime(2026, 11, 3, 10, 0), _tone(2))
     pcm.touch()  # just written to
     assert ba.pending_recordings(tmp_path) == []
+
+
+def test_backlog_marks_the_call_channel_as_audience_and_noise_as_nobody(tmp_path):
+    start = datetime(2026, 11, 3, 10, 15, 0)
+    _record(tmp_path, "Audience", start, np.concatenate([_tone(3), _silence(67), _tone(3), _silence(2)]))
+    texts = iter(["o întrebare de la client", "Somente value é integral"])
+
+    def transcribe(audio, language=None, initial_prompt=None):
+        return {"text": next(texts), "language": "ro"}
+
+    written = {}
+    ba.BacklogTranscriber(
+        tmp_path, queue.Queue(), transcribe,
+        write_lines=lambda day, lines: written.setdefault(day, []).extend(lines),
+        is_garbage=lambda t: False, me_label="Victor", log=_Log()).drain_once()
+    assert written == {"2026-11-03": [
+        "[10:15] 👥 o întrebare de la client", "[10:16] Somente value é integral"]}

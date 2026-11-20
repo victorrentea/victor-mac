@@ -9,6 +9,7 @@ Uses CoreAudio for device detection (no stale devices) and sounddevice for captu
 
 import contextlib
 import json
+import math
 import os
 import queue
 import re
@@ -247,6 +248,17 @@ _VOICE_CORPUS_WINDOW = os.environ.get("VOICE_CORPUS_WINDOW", "Mon-Fri 09:00-17:0
 # — so "off" was buying no safety that "on" does not already have.
 _SPEAKER_ID = os.environ.get("WHISPER_SPEAKER_ID", "1").strip().lower()
 _SPEAKER_ID_ON = _SPEAKER_ID in {"1", "true", "yes", "on"}  # allow-list, as above
+
+# **The channel says more than the voiceprint, when there is a channel to ask**
+# (Victor, 2026-11-20). He always joins Zoom/Teams through this Mac, so the
+# `From Zoom` loopback carries only the other side of a call: a line from it is
+# 👥, whatever the voiceprint makes of it. And while a call is live, his own mic
+# is a headset-close channel with nobody else on it, so its lines are 🎙️ unless
+# the voiceprint *positively* says somebody else (score below `audience_below`) —
+# the abstain band and the too-short-to-score lines are him. "A call is live"
+# means the loopback produced real words within this window; onsite it stays
+# silent, and the mic falls back to the voiceprint alone.
+_CALL_WINDOW_SEC = float(os.environ.get("WHISPER_CALL_WINDOW_SECONDS", "180"))
 # How many of whisper's own segments inside one chunk get a verdict. The cap is
 # not about cost — it is about a decode that has gone wrong: a hallucinating
 # chunk can come back with fifty zero-length segments, and scoring a list like
@@ -1083,6 +1095,53 @@ class _ChannelCapture:
             )
 
 
+_CHANNEL_RULES = frozenset({"call-channel", "in-call-mic", "voice-strongly-not-victor"})
+
+
+class _Shown:
+    """The label a transcript line actually carries, and which rule put it there."""
+
+    __slots__ = ("label", "rule")
+
+    def __init__(self, label, rule):
+        self.label, self.rule = label, rule
+
+
+def _attribute(channel: str, in_call: bool, verdict, text: str) -> _Shown:
+    """Channel first, voiceprint second, noise never. Pure; see `_CALL_WINDOW_SEC`.
+
+    Reads only `verdict.label` — never the score — so a verdict whose score
+    explodes when read still cannot take the line down with it.
+    """
+    from speaker_id import looks_like_noise  # noqa: PLC0415 — numpy only, but keep it lazy
+
+    if _is_garbage(text) or looks_like_noise(text):
+        return _Shown(None, "noise")
+    voice = getattr(verdict, "label", None) if verdict is not None else None
+    if channel != _ME_SPEAKER:
+        return _Shown(_AUD_SPEAKER, "call-channel")
+    if in_call:
+        if voice == _AUD_SPEAKER:
+            return _Shown(_AUD_SPEAKER, "voice-strongly-not-victor")
+        return _Shown(_ME_SPEAKER, "in-call-mic")
+    return _Shown(voice, "voice")
+
+
+def _segment_rms(audio, start, end):
+    """RMS of the segment's own samples, or of the whole chunk when uncut."""
+    if audio is None:
+        return None
+    try:
+        piece = audio
+        if start is not None and end is not None:
+            piece = audio[int(start * _SAMPLE_RATE) : int(end * _SAMPLE_RATE)]
+        if len(piece) == 0:
+            return None
+        return float(np.sqrt(np.mean(np.square(piece, dtype=np.float64))))
+    except Exception:  # noqa: BLE001 — a measurement never costs a line
+        return None
+
+
 def _speaker_glyph(verdict) -> str:
     """`🎙️ ` for Victor, `👥 ` for the room, and nothing at all when unsure.
 
@@ -1446,7 +1505,7 @@ def _transcriber_loop(tx_queue: queue.Queue, on_segment, scorer=None):
                 # of a whisper call's wall time is already spent off-CPU, so
                 # this fits in a gap that exists anyway.
                 verdicts = _score_speakers(scorer, audio, result, text)
-                on_segment(label, lang, text, device_tag, verdicts)
+                on_segment(label, lang, text, device_tag, verdicts, audio=audio)
         except Exception as exc:
             log.error("transcript", f"🎙️ Whisper error: {exc}")
 
@@ -1511,6 +1570,8 @@ class WhisperTranscriptionRunner:
         self._unregister_listener = None
         self._unregister_alive_listener = None
         self._recent_victor: list[tuple[float, str]] = []  # (timestamp, text) for dedup
+        # Wall clock of the last real line on the loopback = "a call is live".
+        self._last_call_speech: float = 0.0
         # Seed from the file's REAL mtime. Starting at 0.0 meant the watcher's
         # very first poll always saw "changed" — a phantom source switch ~1s
         # into every single run, which called _check_best_device() and tore
@@ -1908,7 +1969,10 @@ class WhisperTranscriptionRunner:
             return verdicts
         return [(None, None, text, verdicts)]
 
-    def _write_speaker_verdict(self, hhmm: str, verdict, text: str, start=None, end=None):
+    def _write_speaker_verdict(
+        self, hhmm: str, verdict, text: str, start=None, end=None,
+        shown=None, channel=None, in_call=None, mic=None, rms=None,
+    ):
         """A verdict goes to its OWN file, never into the transcript.
 
         This is the dark launch. Labels were in the transcript once and were
@@ -1924,16 +1988,35 @@ class WhisperTranscriptionRunner:
             # the transcript join that `hhmm` exists for.
             now = datetime.now()
             day = now.strftime("%Y-%m-%d")
+            # `label`/`score`/`reason` stay the VOICEPRINT's verdict (null when
+            # the segment was not scored), so every tool that reads them keeps
+            # meaning what it meant; `shown` is what the transcript got.
             row = {
                 "t": now.strftime("%H:%M:%S"),
                 "hhmm": hhmm,
-                "label": verdict.label,
-                "score": None if not np.isfinite(verdict.score) else round(verdict.score, 4),
-                "reason": verdict.reason,
+                "label": verdict.label if verdict is not None else None,
+                "score": (
+                    None if verdict is None or not np.isfinite(verdict.score)
+                    else round(verdict.score, 4)
+                ),
+                "reason": verdict.reason if verdict is not None else None,
                 # Enough to line the verdict up against the transcript line
                 # without duplicating a day of speech into a second file.
                 "text": text[:80],
             }
+            if shown is not None:
+                # Since 2026-11-20: the inputs a loudness rule will be fitted
+                # on. `rms` is the segment's own (not the chunk's), `mic` the
+                # input's short name — loudness only means something relative
+                # to Victor's usual level on that same mic.
+                row["shown"] = shown.label
+                row["rule"] = shown.rule
+                row["channel"] = "mic" if channel == _ME_SPEAKER else "call"
+                row["in_call"] = bool(in_call)
+                row["mic"] = mic or None
+                if rms is not None:
+                    row["rms"] = round(rms, 5)
+                    row["dbfs"] = round(20 * math.log10(rms), 1) if rms > 0 else None
             if start is not None:
                 # Seconds from the start of the chunk. Present only when the
                 # verdict is about a whisper segment rather than the whole
@@ -1949,7 +2032,8 @@ class WhisperTranscriptionRunner:
             log.error("transcript", f"🗣️ speaker verdict write failed: {exc}")
 
     def _on_segment(
-        self, label: str, lang: str, text: str, device_tag: str = "", verdicts=None
+        self, label: str, lang: str, text: str, device_tag: str = "", verdicts=None,
+        audio=None,
     ):
         now = datetime.now()
         hhmm = now.strftime("%H:%M")
@@ -1990,10 +2074,27 @@ class WhisperTranscriptionRunner:
         elif self._is_duplicate_of_victor(text):
             return
 
-        for start, end, seg_text, verdict in self._verdict_rows(verdicts, text):
-            self._write_to_transcript(f"[{hhmm}] {_speaker_glyph(verdict)}{seg_text}")
-            if verdict is not None:
-                self._write_speaker_verdict(hhmm, verdict, seg_text, start, end)
+        rows = self._verdict_rows(verdicts, text)
+        if label != _ME_SPEAKER:
+            from speaker_id import looks_like_noise  # noqa: PLC0415
+
+            if any(not _is_garbage(r[2]) and not looks_like_noise(r[2]) for r in rows):
+                self._last_call_speech = time.time()
+        in_call = time.time() - self._last_call_speech < _CALL_WINDOW_SEC
+
+        for start, end, seg_text, verdict in rows:
+            try:
+                shown = _attribute(label, in_call, verdict, seg_text)
+            except Exception as exc:  # noqa: BLE001 — a label never costs a line
+                log.error("transcript", f"🗣️ attribution failed: {exc!r}")
+                shown = _Shown(None, "error")
+            self._write_to_transcript(f"[{hhmm}] {_speaker_glyph(shown)}{seg_text}")
+            if verdict is not None or (verdicts is not None and shown.rule in _CHANNEL_RULES):
+                self._write_speaker_verdict(
+                    hhmm, verdict, seg_text, start, end,
+                    shown=shown, channel=label, in_call=in_call,
+                    mic=device_tag, rms=_segment_rms(audio, start, end),
+                )
 
         parts = text.split()
         words = len(parts)

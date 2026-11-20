@@ -110,6 +110,24 @@ def cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (na * nb))
 
 
+# Letters Victor's two languages can legitimately produce. Anything alphabetic
+# outside ASCII and these is whisper writing another language over noise.
+_RO_LETTERS = frozenset("ăâîșțşţĂÂÎȘȚŞŢ")
+
+
+def looks_like_noise(text: str) -> bool:
+    """True when a line is whisper inventing speech over noise, not a person.
+
+    Measured on 16–19 Nov 2026: 14–27 % of the lines marked 👥 were babble like
+    "Spira za bilata pu元mi cu dirt 수리입니다" or Portuguese/Japanese fragments —
+    whisper is pinned to ro/en, so a letter from any other alphabet means it
+    had nothing real to transcribe. Victor's call (2026-11-20): such a line gets
+    no speaker mark at all, rather than 👥, which claimed somebody spoke.
+    Punctuation like „ ” – … is not alphabetic and does not count.
+    """
+    return any(ch.isalpha() and ord(ch) > 127 and ch not in _RO_LETTERS for ch in text)
+
+
 def decide(
     score: float,
     seconds: float,
