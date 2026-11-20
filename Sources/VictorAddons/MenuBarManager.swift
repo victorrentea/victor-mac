@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 20, 07:58"
+    static let BUILD_TIME = "Nov 20, 13:35"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -208,6 +208,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // 🎙️ Created after the V, so macOS puts it just left of it.
         micStatusItem = MicStatusItem(fill: { [weak self] menu in self?.fillMicMenu(menu) },
                                       onDefaultInputChange: { [weak self] in self?.refreshMicItem() })
+        VictorMicLink.shared.start()
         // The microphone is drawn in the menu bar's own ink (`makeMicIcon`), baked
         // into a bitmap beside a colour badge — so a bar that turns light or dark
         // (wallpaper, appearance) needs the picture drawn again.
@@ -1617,6 +1618,31 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         }
         menu.addItem(.separator())
         appendMicRows(to: menu)
+        menu.addItem(.separator())
+        let victorMic = NSMenuItem(title: "", action: #selector(toggleVictorMic), keyEquivalent: "")
+        victorMic.target = self
+        applyVictorMicRow(victorMic)
+        menu.addItem(victorMic)
+        // The cached state is up to 5 s old; repaint the row once a fresh one lands.
+        VictorMicLink.shared.refresh { [weak self, weak victorMic] in
+            if let victorMic { self?.applyVictorMicRow(victorMic) }
+        }
+    }
+
+    /// 🪄 Victor Mic — the noise-cancelled microphone run by the victor-mic app
+    /// (`VictorMicLink`). Ticked = cleaning; a click flips to the raw microphone and back.
+    private func applyVictorMicRow(_ item: NSMenuItem) {
+        let row = VictorMicLink.row(VictorMicLink.shared.state) { name in
+            MicRoster.all.first { name.range(of: $0.pattern, options: .caseInsensitive) != nil }?.glyph
+        }
+        item.title = row.title
+        item.isEnabled = row.enabled
+        item.state = row.ticked ? .on : .off
+    }
+
+    @objc private func toggleVictorMic() {
+        let on = !(VictorMicLink.shared.state?.clean ?? true)
+        VictorMicLink.shared.setClean(on)
     }
 
     /// The V-in-a-circle logo (Flaticon "Letter V", 2026-11-19) in the bar's ink,

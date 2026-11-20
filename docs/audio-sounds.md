@@ -196,3 +196,18 @@ ten minutes the same day and was moved here: it is the room's speech, not an eff
   for the file to be finalised (`stopAndWait` in `applicationWillTerminate`);
   an unplugged mic ends the take with an error but keeps the file.
 - Tests: `VoiceRecorderTests` (the device choice against the 2026-11-12 desk).
+
+## 🪄 Victor Mic row (`VictorMicLink`, 2026-11-20)
+
+The noise-cancelled microphone is **another app**, `~/workspace/victor-mic` (port 55128). It
+started as the study in `victor-krisp`. It is not in this process because a redeploy here
+must not cut a call's voice. Its HAL driver ("Victor Mic" + hidden "Victor Mic Feed") lives in
+`coreaudiod` and never disappears on any restart.
+
+- **Source = system default input**, so the 🎙️ pick and `SystemMicKeeper` drive it with no
+  extra protocol.
+- **Row** under the roster in the 🎙️ menu: `🪄 Victor Mic — cleaning 🎙️ Elgato Wave XLR`,
+  `idle, no app listening`, `driver not installed`, `app not running`. Ticked = cleaning;
+  click = `GET /clean/off|on` (A/B against the raw microphone).
+- State is polled every 5 s (`GET /state`, 1 s timeout) and fetched again when the menu
+  opens, and the row repaints once the answer arrives.

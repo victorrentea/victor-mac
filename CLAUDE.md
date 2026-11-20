@@ -57,6 +57,12 @@ load-bearing, not commentary.
   🔎 `ShareZoom`) and a forward of `/test/virtual-desktop` (`MirrorProxy`). 🔊 Auto Share
   Faceover and 🎞️ Retina 60 Hz in Zoom/Teams spent a few hours of that day there and
   are **back here** (`ZoomSharePrep`, `RetinaRefreshCap`).
+- **🪄 Victor Mic is a sixth app since 2026-11-20**:
+  [`victor-mic`](https://github.com/victorrentea/victor-mic) (private, beside this checkout,
+  port **55128**, no icon) — the noise-cancelled "Victor Mic" input (a BlackHole-derived HAL
+  driver + DeepFilterNet3 on the system default input, only while an app reads it). Here: only
+  the 🪄 row of the 🎙️ menu (`VictorMicLink`); its source is whatever `SystemMicKeeper` keeps
+  as the default input.
 - **Neither app waits for the other.** No launch ordering, no shared process;
   each degrades on its own.
 - **Single Swift process**: `VictorAddons` is the main application combining menu bar UI and overlay functionality
