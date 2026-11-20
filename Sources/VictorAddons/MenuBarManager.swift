@@ -1588,14 +1588,20 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private func refreshMicItem() {
         guard let micStatusItem else { return }
         let glyph = shownMicGlyph()
+        // **Three power states, three pictures** (2026-11-20, Victor: *"normal (transcriu):
+        // logo curat. b) pe baterie … un zig zag rosu peste logoul microfonului. c) un semn
+        // de 'paused' (doua bare groase verticale verzi)"*). The 👂 and 🍃 corner emoji
+        // they replace were too small to tell apart at a glance.
         let mark: String?
-        if isRecordingOnBattery { mark = "👂" }
-        else if !isTranscribing && isTranscriptionPausedByBattery { mark = "🍃" }
+        var overlay = MicOverlay.none
+        if isRecordingOnBattery { mark = nil; overlay = .zigzag }
+        else if !isTranscribing && isTranscriptionPausedByBattery { mark = nil; overlay = .pause }
         else if !isTranscribing { mark = stopBlinkAlt ? "🟦" : "🟥" }
         else if isTranscriptionStale { mark = "🤐" }
         else { mark = nil }
-        micStatusItem.setImage(makeMicIcon(glyph, badge: mark) ?? makeEmojiIcon(glyph, badge: mark)
-                               ?? makeMicIcon("🎙️", badge: mark))
+        micStatusItem.setImage(makeMicIcon(glyph, badge: mark, overlay: overlay)
+                               ?? makeEmojiIcon(glyph, badge: mark, overlay: overlay)
+                               ?? makeMicIcon("🎙️", badge: mark, overlay: overlay))
         let mic = MicRoster.byGlyph(glyph)
         let name = mic.map { "\($0.glyph) \($0.label)" } ?? glyph.nonBlank(or: "unknown input")
         let state = isRecordingOnBattery ? "recording on battery"
@@ -1792,7 +1798,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     /// `isTemplate = false` is essential — template images are forced to a single
     /// tone by macOS, which strips the emoji's color glyph (renders as a white blob).
     /// Apple Color Emoji draws colored only when the host image is non-template.
-    private func makeEmojiIcon(_ emoji: String, badge: String? = nil) -> NSImage? {
+    private func makeEmojiIcon(_ emoji: String, badge: String? = nil, overlay: MicOverlay = .none) -> NSImage? {
         guard !emoji.isEmpty else { return nil }
         let size = NSSize(width: 18, height: 18)
         let composite = NSImage(size: size)
@@ -1806,9 +1812,14 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         if let badge = badge, !badge.isEmpty {
             drawBadge(badge, canvas: size)
         }
+        MicOverlay.draw(overlay, canvas: size, dark: isBarDark)
         composite.unlockFocus()
         composite.isTemplate = false
         return composite
+    }
+
+    private var isBarDark: Bool {
+        statusItem?.button?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) != .aqua
     }
 
     /// **The microphone as a line drawing in the menu bar's ink** (2026-11-13,
@@ -1823,12 +1834,12 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     /// falls back to the emoji. Reverses 2026-09-28 (the colour 💻 back).
     static let micSymbols: [String: String] = [
         "xlr": "mic", "rx": "music.mic", "stage": "building.columns",
-        "bose": "headphones", "mac": "laptopcomputer", "👂": "ear",
+        "bose": "headphones", "mac": "apple.logo", "👂": "ear",
     ]
 
-    private func makeMicIcon(_ glyph: String, badge: String? = nil) -> NSImage? {
+    private func makeMicIcon(_ glyph: String, badge: String? = nil, overlay: MicOverlay = .none) -> NSImage? {
         guard let name = Self.micSymbols[MicRoster.byGlyph(glyph)?.id ?? glyph] else { return nil }
-        let dark = statusItem?.button?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) != .aqua
+        let dark = isBarDark
         let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: [dark ? .white : .black]))
         guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
@@ -1843,6 +1854,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         if let badge = badge, !badge.isEmpty {
             drawBadge(badge, canvas: size)
         }
+        MicOverlay.draw(overlay, canvas: size, dark: dark)
         composite.unlockFocus()
         composite.isTemplate = false
         return composite

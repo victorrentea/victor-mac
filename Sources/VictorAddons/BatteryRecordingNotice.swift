@@ -11,7 +11,7 @@ import Cocoa
 /// talkie, dar ne-animat/strălucit), un 🔴 care clipește lent, apoi emoji baterie
 /// ca acum"*; it said `👂/🔋` until then): the sound, the red light of a take in
 /// progress, why there is no text. The gaps either side of the 🔴 match by eye,
-/// between the inks (*"distanța … egală"*). The menu-bar icon stays 👂.
+/// between the inks (*"distanța … egală"*). The menu-bar icon carries a red zig-zag (`MicOverlay`).
 ///
 /// **Two buttons** (Victor, 2026-11-03: *"să aibă 2 butoane: snooze 1h ⏱️ +
 /// Stop ❌"*; label `Stop ❌`), and only the buttons act — a click elsewhere on the pill does
