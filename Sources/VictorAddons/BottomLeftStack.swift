@@ -1,14 +1,17 @@
 import CoreGraphics
 import Foundation
 
-/// 🥞 The bottom-left corner holds at most **two** pills, stacked.
+/// 🥞 The bottom-left corner holds at most **three** pills, stacked.
 ///
 /// Every `BottomLeftBanner` is its own object (status, prompt offer, paste undo,
 /// the alarms, the reminders…) and each used to rest flush in the corner — so
 /// two of them up at once were drawn one on top of the other and only the last
 /// one could be read. Victor (2026-11-10): *a stack of at most two; the new one
 /// comes in at the bottom, the old one climbs, and when a third arrives the top
-/// one, if its time is not up yet, rises and fades.*
+/// one, if its time is not up yet, rises and fades.* Raised to **three** on
+/// 2026-11-20, when every intercepted prompt became a pill of its own: *"they
+/// should push each other up, for a maximum of three at the same time, after
+/// which they fade out."*
 ///
 /// So: a pill that **appears** takes slot 0 (flush in the corner, where it always
 /// entered) and pushes every pill already up one slot higher; one pushed past the
@@ -18,7 +21,7 @@ import Foundation
 ///
 /// This type is the pure part: the order, bottom first, and who gets evicted.
 enum BottomLeftStackPolicy {
-    static let maxVisible = 2
+    static let maxVisible = 3
     /// Vertical gap between two stacked pills.
     static let gap: CGFloat = 6
 
@@ -28,7 +31,7 @@ enum BottomLeftStackPolicy {
     /// A **pinned** pill — an alarm with no countdown — never leaves on its own,
     /// pushed or not (Victor, 2026-11-10): the overflow takes the oldest pills
     /// that are NOT pinned instead, and when there are not enough of those the
-    /// stack simply grows past two rather than lose an alarm. The newcomer is
+    /// stack simply grows past three rather than lose an alarm. The newcomer is
     /// never the one pushed out.
     static func arrive<T: Equatable>(_ new: T, into order: [T],
                                      pinned: (T) -> Bool = { _ in false }) -> (order: [T], evicted: [T]) {

@@ -41,9 +41,12 @@ enum SessionNotesAppender {
     /// the week's list with a live Send button.
     private static var blockedPromptPrefixes: [String] { PromptCapturePolicy.blockedPrefixes }
 
-    /// Currently-pending prompt text, if any. Cleared on hover-accept or
-    /// timeout. Only one prompt-capture offer is on screen at a time.
-    private static var pendingPrompt: String?
+    /// Where a prompt offer is drawn (AppDelegate sets the same screens as the
+    /// shared pill's).
+    static var promptScreens: () -> [NSScreen] = { NSScreen.pillScreens }
+    /// The prompt offers still up, one banner each — held here because the 🥞
+    /// stack only keeps weak references. Pruned of the gone ones on every offer.
+    private static var promptOffers: [BottomLeftBanner] = []
 
     /// The 🤖 menu row: the clipboard, filed as an agent **prompt** rather than
     /// a hand-sent note. Deliberately clipboard-only, unlike ⌘⌃P — a menu click
@@ -151,33 +154,40 @@ enum SessionNotesAppender {
         guard !trimmed.isEmpty else { return }
         if blockedPromptPrefixes.contains(where: { trimmed.hasPrefix($0) }) { return }
         guard ScreenshotManager.sessionFolder != nil else { return }
-        guard let banner = promptBanner else {
-            overlayInfo("Prompt-capture banner not set; dropping request")
-            return
-        }
 
-        resultDismissWork?.cancel()
-        resultDismissWork = nil
-        pendingPrompt = trimmed
+        // 🥞 One pill PER prompt (2026-11-20). Several prompts in a row used to
+        // re-show the one shared pill in place, so each new prompt wiped the
+        // previous offer. Victor: *"they should push each other up, for a
+        // maximum of three at the same time, after which they fade out"* — a
+        // fresh banner enters the stack at the bottom, the earlier offers climb,
+        // and the one pushed past the top gets its un-touched outcome early
+        // (`evictFromStack`) and rises out.
+        let banner = BottomLeftBanner(screensProvider: promptScreens, hoverable: true)
+        promptOffers.removeAll { !$0.isVisible }
+        promptOffers.append(banner)
+        // Each offer decides once: whichever of click / countdown / eviction
+        // comes first wins, the other is a no-op.
+        var decided = false
         let icon = source.icon(height: promptIconHeight)
         let display = formatPromptLabel(from: trimmed, hasIcon: icon != nil)
         banner.icon = icon
         if autoSend {
             // Click / hover = keep it out of the notes; it sinks, like any drop.
             banner.onHover = { [weak banner] in
-                guard pendingPrompt == trimmed else { return }
-                pendingPrompt = nil
+                guard !decided else { return }
+                decided = true
                 banner?.dismissSinking()
             }
             // The window closed un-touched = Victor let it go → it goes.
             banner.onHoverCountdownExpired = { [weak banner] in
-                guard pendingPrompt == trimmed else { return }
-                pendingPrompt = nil
+                guard !decided else { return }
+                decided = true
                 do {
                     _ = try writeNotes(trimmed, marker: .agentPrompt)
                     onAccepted?()
                     banner?.dismissRisingFade()
                 } catch {
+                    banner?.dismissSinking()
                     reportWriteFailure(error)
                 }
             }
@@ -187,16 +197,17 @@ enum SessionNotesAppender {
             return
         }
         banner.onHover = { [weak banner] in
-            guard let captured = pendingPrompt else { return }
-            pendingPrompt = nil
+            guard !decided else { return }
+            decided = true
             // Hovering the offer is the explicit confirmation. Accepting a
             // proposed action floats the pill up into the notes — the rising
             // fade *is* the "sent" feedback, so there's no follow-up flash.
             do {
-                _ = try writeNotes(captured, marker: .agentPrompt)
+                _ = try writeNotes(trimmed, marker: .agentPrompt)
                 onAccepted?()
                 banner?.dismissRisingFade()
             } catch {
+                banner?.dismissSinking()
                 reportWriteFailure(error)
             }
         }
@@ -207,8 +218,8 @@ enum SessionNotesAppender {
         // is dropped, so the pill sinks straight down (the arrow points up = hover
         // rises/commits; not acting in time drops it the other way).
         banner.onHoverCountdownExpired = { [weak banner] in
-            guard pendingPrompt == trimmed else { return }
-            pendingPrompt = nil
+            guard !decided else { return }
+            decided = true
             banner?.dismissSinking()
         }
         banner.show(text: display, font: promptFont,
@@ -362,7 +373,6 @@ enum SessionNotesAppender {
                 overlayInfo("Result banner unset; would have shown: \(text)")
                 return
             }
-            pendingPrompt = nil
             resultDismissWork?.cancel(); resultDismissWork = nil
             banner.onHover = { [weak banner] in
                 // Cancelling a done action: sink the pill off the bottom only if
@@ -386,7 +396,7 @@ enum SessionNotesAppender {
 
     /// Flash a short status message in the bottom-left banner and auto-dismiss
     /// after `resultVisibleDuration`. Replaces any visible prompt-capture
-    /// banner: pendingPrompt and onHover are cleared so an accidental hover
+    /// banner: onHover is cleared so an accidental hover
     /// on the flashing confirmation can't commit a stale prompt.
     private static func showResult(_ text: String) {
         DispatchQueue.main.async {
@@ -394,7 +404,6 @@ enum SessionNotesAppender {
                 overlayInfo("Result banner unset; would have shown: \(text)")
                 return
             }
-            pendingPrompt = nil
             banner.onHover = nil
             resultDismissWork?.cancel()
             banner.icon = nil

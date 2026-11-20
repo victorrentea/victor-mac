@@ -16,9 +16,15 @@ final class BottomLeftStackPolicyTests: XCTestCase {
         XCTAssertEqual(r.evicted, [])
     }
 
-    func testThirdPillPushesTheTopOneOut() {
+    func testThirdPillStillFits() {
         let r = P.arrive("c", into: ["b", "a"])
-        XCTAssertEqual(r.order, ["c", "b"], "never more than two up")
+        XCTAssertEqual(r.order, ["c", "b", "a"])
+        XCTAssertEqual(r.evicted, [])
+    }
+
+    func testFourthPillPushesTheTopOneOut() {
+        let r = P.arrive("d", into: ["c", "b", "a"])
+        XCTAssertEqual(r.order, ["d", "c", "b"], "never more than three up")
         XCTAssertEqual(r.evicted, ["a"], "the oldest, on top, leaves")
     }
 
@@ -29,20 +35,20 @@ final class BottomLeftStackPolicyTests: XCTestCase {
     }
 
     func testAPinnedAlarmOnTopStaysAndTheOldestUnpinnedLeavesInstead() {
-        let r = P.arrive("c", into: ["b", "alarm"], pinned: { $0 == "alarm" })
-        XCTAssertEqual(r.order, ["c", "alarm"])
+        let r = P.arrive("d", into: ["c", "b", "alarm"], pinned: { $0 == "alarm" })
+        XCTAssertEqual(r.order, ["d", "c", "alarm"])
         XCTAssertEqual(r.evicted, ["b"])
     }
 
-    func testTwoPinnedAlarmsLetTheStackGrowRatherThanLoseOne() {
-        let r = P.arrive("c", into: ["a1", "a2"], pinned: { $0.hasPrefix("a") })
-        XCTAssertEqual(r.order, ["c", "a1", "a2"])
+    func testThreePinnedAlarmsLetTheStackGrowRatherThanLoseOne() {
+        let r = P.arrive("c", into: ["a1", "a2", "a3"], pinned: { $0.hasPrefix("a") })
+        XCTAssertEqual(r.order, ["c", "a1", "a2", "a3"])
         XCTAssertEqual(r.evicted, [])
     }
 
     func testThePinnedNewcomerIsNeverTheOnePushedOut() {
-        let r = P.arrive("new", into: ["b", "a"], pinned: { _ in true })
-        XCTAssertEqual(r.order, ["new", "b", "a"])
+        let r = P.arrive("new", into: ["c", "b", "a"], pinned: { _ in true })
+        XCTAssertEqual(r.order, ["new", "c", "b", "a"])
     }
 
     func testLeavingTheBottomLetsTheTopDrop() {
