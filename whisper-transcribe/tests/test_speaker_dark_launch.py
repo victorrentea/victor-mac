@@ -432,6 +432,16 @@ class TestTheChannelBeatsTheVoiceprint:
     def _lines(self, tmp_path):
         return [l for l in _transcript(tmp_path).splitlines() if l.strip()]
 
+    @pytest.fixture(autouse=True)
+    def _with_a_call_channel(self, monkeypatch):
+        real = wr.WhisperTranscriptionRunner.__init__
+
+        def init(self, *a, **kw):
+            real(self, *a, **kw)
+            self._call_channel_live = True
+
+        monkeypatch.setattr(wr.WhisperTranscriptionRunner, "__init__", init)
+
     def test_a_call_line_is_audience_even_when_the_voiceprint_says_victor(self, tmp_path):
         r = _runner(tmp_path)
         r._on_segment("Audience", "ro", "eu cred că merge", "", _Verdict("Victor", 0.8))
@@ -485,6 +495,15 @@ class TestTheChannelBeatsTheVoiceprint:
         r = _runner(tmp_path)
         r._on_segment("Victor", "ro", "hmm ceva", "🎤", _Verdict(None, 0.3, "abstain"))
         assert self._lines(tmp_path)[-1].endswith("] hmm ceva")
+
+    def test_without_a_call_channel_the_meeting_marker_changes_nothing(self, tmp_path, monkeypatch):
+        marker = tmp_path / "in-call"
+        marker.touch()
+        monkeypatch.setattr(wr, "_IN_CALL_MARKER", marker)
+        r = _runner(tmp_path)
+        r._call_channel_live = False  # remote voices reach the mic: it is not only him
+        r._on_segment("Victor", "ro", "eu nu știu", "🎙️", _Verdict(None, 0.3, "abstain"))
+        assert self._lines(tmp_path)[-1].endswith("] eu nu știu")
 
     def test_noise_on_the_loopback_gets_no_mark_and_does_not_start_a_call(self, tmp_path):
         r = _runner(tmp_path)

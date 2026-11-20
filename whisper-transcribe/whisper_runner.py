@@ -1589,6 +1589,11 @@ class WhisperTranscriptionRunner:
         self._recent_victor: list[tuple[float, str]] = []  # (timestamp, text) for dedup
         # Wall clock of the last real line on the loopback = "a call is live".
         self._last_call_speech: float = 0.0
+        # True only once the loopback device actually resolved. Without it the
+        # remote side reaches Victor's mic through the speakers, and "in a call
+        # the mic is him" would put 🎙️ on participants (seen 2026-11-20: the
+        # `From Zoom` device was gone and the Teams voices arrived on the XLR).
+        self._call_channel_live: bool = False
         # Seed from the file's REAL mtime. Starting at 0.0 meant the watcher's
         # very first poll always saw "changed" — a phantom source switch ~1s
         # into every single run, which called _check_best_device() and tore
@@ -1707,6 +1712,7 @@ class WhisperTranscriptionRunner:
         if resolved:
             aud_idx, aud_name = resolved
             log.info("transcript", f"🎙️ Resolved Audience: {aud_name!r}")
+            self._call_channel_live = True
             self._channels.append(
                 _ChannelCapture(
                     aud_idx,
@@ -2097,7 +2103,7 @@ class WhisperTranscriptionRunner:
 
             if any(not _is_garbage(r[2]) and not looks_like_noise(r[2]) for r in rows):
                 self._last_call_speech = time.time()
-        in_call = (
+        in_call = self._call_channel_live and (
             time.time() - self._last_call_speech < _CALL_WINDOW_SEC
             or _meeting_marker_live()
         )
