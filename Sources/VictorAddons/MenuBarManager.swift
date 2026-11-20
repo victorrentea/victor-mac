@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 20, 13:35"
+    static let BUILD_TIME = "Nov 20, 16:57"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -1257,6 +1257,14 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     /// The window is named **Training Assistant** (2026-09-23, Victor) — among a
     /// dozen Terminal windows it is the one that must be found again, to watch
     /// its log or to stop it.
+    /// The training-assistant daemon's host panel; with no session started it
+    /// is the landing page where one is started.
+    static let hostLandingURL = URL(string: "http://127.0.0.1:1234/host")!
+
+    @objc private func openHostLandingAction() {
+        NSWorkspace.shared.open(Self.hostLandingURL)
+    }
+
     @objc private func startTrainingAssistantAction() {
         let script = """
         tell application "Terminal"
@@ -1501,9 +1509,13 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             wsStatusItem.action = #selector(displayJoinLinkAction)
             wsStatusItem.target = self
         } else if wsConnected {
-            wsStatusItem.title = "🟢 WS connected"
-            wsStatusItem.isEnabled = false
-            wsStatusItem.action = nil
+            // ⚪ The daemon is up but no session is started (2026-11-20, Victor):
+            // the row used to say "WS connected" and do nothing; now it says what
+            // is missing and opens the host's landing page, where one is started.
+            wsStatusItem.title = "⚪ No session started ↗"
+            wsStatusItem.isEnabled = true
+            wsStatusItem.action = #selector(openHostLandingAction)
+            wsStatusItem.target = self
         } else {
             wsStatusItem.title = "🔴 Start training assistant"
             wsStatusItem.isEnabled = true
