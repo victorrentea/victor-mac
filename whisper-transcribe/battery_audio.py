@@ -49,7 +49,7 @@ MARKER = "--- 🔋 from battery audio ---"
 class SessionRecorder:
     """One channel's battery audio, off the audio thread.
 
-    Same discipline as `_RawRecorder` in the runner — the callback only does a
+    The realtime discipline — the callback only does a
     non-blocking put, a writer thread owns the disk — with one difference that is
     the whole point: **a file knows when it started**. The name carries the wall
     clock of its first sample, and a sidecar JSON the device and the threshold the
@@ -78,7 +78,7 @@ class SessionRecorder:
     def write(self, block: np.ndarray, device: str, threshold: float, at: float | None = None):
         try:
             self._q.put_nowait((time.time() if at is None else at, block.copy(), device, threshold))
-        except BaseException:  # noqa: BLE001 — deliberately everything, see _RawRecorder
+        except BaseException:  # noqa: BLE001 — deliberately everything: nothing may escape into PortAudio
             self.dropped += 1
 
     def _say(self, level: str, msg: str):

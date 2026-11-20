@@ -21,8 +21,7 @@ import Foundation
 /// usable with no knowledge of this app, so the shared state lives in *its*
 /// folder and this app is the one that reaches over. There is precedent in both
 /// directions already — `LiveCaptionsStream` reads
-/// `~/.walkie-talkie/elevenlabs.env`, `VoiceCorpusRecording` writes into
-/// `~/.walkie-talkie/voice-corpus`. Nothing here creates a dependency the other
+/// `~/.walkie-talkie/elevenlabs.env`. Nothing here creates a dependency the other
 /// way: if this app never runs, Walkie reads and writes the same file alone.
 ///
 /// **A file rather than a route**, although both apps already run an HTTP server

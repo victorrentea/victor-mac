@@ -168,63 +168,17 @@ _CAPTURE_STALL_SEC = float(os.environ.get("WHISPER_CAPTURE_STALL_SECONDS", "30")
 # `_ChannelCapture._report_voice`.
 _VOICE_PULSE_SEC = 1.0
 
-# Keep a copy of the raw microphone audio on disk. OFF by default — it writes
-# ~115 MB per hour and records a room full of people, so it is opt-in per
-# session and never a standing behaviour.
-#
-# It exists because the speaker-identification work has no far-field corpus.
-# Every recording that survived is a Zoom mix of *remote* participants; the hard
-# case — an audience in the room arriving through Victor's own lavalier — was
-# never captured, and the only two hybrid sessions on the calendar were not
-# recorded at all. This writes exactly the signal the classifier will see in
-# production: same device, same callback, before any gating.
-#
-# `1` records the mic channel; `all` also records the loopback channel, which in
-# a hybrid room is clean ground truth for the remote speakers (the mic is not).
-# `all` is reachable only by setting this variable by hand for a manual run —
-# the menu toggle and its flag file only ever ask for `1`.
-# An ALLOW-list, not a deny-list. A deny-list on a privacy opt-in fails the
-# wrong way: `WHISPER_RECORD_RAW=off` -- or `disabled`, or a typo -- is not in
-# {"0","false","no",""}, so it would switch recording ON and start capturing a
-# room that was never asked. Anything unrecognised means off.
-_RECORD_RAW = os.environ.get("WHISPER_RECORD_RAW", "0").strip().lower()
-_RECORD_RAW_ALL = _RECORD_RAW == "all"
-_RECORD_RAW_ON = _RECORD_RAW in {"1", "true", "yes", "on", "all"}
-# Bounded on purpose — see `_RawRecorder`. 600 blocks ≈ 60 s of slack.
+# The battery recorder's queue, bounded on purpose (`battery_audio.SessionRecorder`):
+# a full queue drops audio rather than block the realtime callback. 600 blocks ≈ 60 s.
 _RECORD_QUEUE_BLOCKS = int(os.environ.get("WHISPER_RECORD_QUEUE_BLOCKS", "600"))
 
 # 🔋 On battery the app launches us with this set: open the microphones, write
 # each channel to `battery-audio/` and never load the model. The full process
 # that starts on AC transcribes that audio (`battery_audio.BacklogTranscriber`).
-# An allow-list for the same reason as `WHISPER_RECORD_RAW`.
+# An allow-list: a typo must mean off, never on.
 _CAPTURE_ONLY = os.environ.get("WHISPER_CAPTURE_ONLY", "0").strip().lower() in {
     "1", "true", "yes", "on"
 }
-
-# Collect utterance-sized WAVs of Victor's voice all workday long, for the
-# fine-tune. A *different* feature from `WHISPER_RECORD_RAW` above and the
-# difference is the unit: that one keeps a day in one undifferentiated file to
-# study the gate, this one keeps one file per sentence to train on. See
-# `corpus_recorder.py` for the whole argument.
-#
-# Off by default and armed the same way — a flag file the app writes and this
-# process reads at launch — because it is a microphone writing to disk and a
-# state you cannot see is a state you forget. Same ALLOW-list as above, for the
-# same reason: a typo must mean off, never on.
-_VOICE_CORPUS = os.environ.get("WHISPER_VOICE_CORPUS", "0").strip().lower()
-_VOICE_CORPUS_ON = _VOICE_CORPUS in {"1", "true", "yes", "on"}
-# Where the WAVs land. A separate variable from `TRANSCRIPTION_FOLDER` on
-# purpose: this is the one setting that has to be able to point at an external
-# disk without moving the transcripts, the raw captures or anything else the app
-# writes. The default sits inside the corpus Walkie Talkie already owns, so the
-# harvester, the baseline and the report all see one corpus rather than two.
-_VOICE_CORPUS_DIR = Path(
-    os.environ.get(
-        "VOICE_CORPUS_DIR", str(Path.home() / ".walkie-talkie" / "voice-corpus")
-    )
-) / "mic"
-# Weekdays, office hours. `always` disables the schedule entirely.
-_VOICE_CORPUS_WINDOW = os.environ.get("VOICE_CORPUS_WINDOW", "Mon-Fri 09:00-17:00")
 
 # Speaker identification, **dark-launched**: it writes its verdicts to a file of
 # their own and never to the transcript.
@@ -635,121 +589,6 @@ def _resolve_device_coreaudio(patterns: list[str]) -> tuple[int, str] | None:
 
 
 # ── Audio capture ────────────────────────────────────────────────────────────
-class _RawRecorder:
-    """Writes one channel's raw audio to a per-day WAV, off the audio thread.
-
-    The single rule: **never block `_cb`**. PortAudio's callback runs on a
-    realtime thread, and a disk that stalls for 50 ms there drops frames from the
-    *live* transcription — trading the thing that works for the thing we are only
-    collecting. So the callback does a non-blocking put onto a bounded queue and
-    a writer thread drains it. When the queue fills, audio is dropped and
-    counted: losing a second of corpus costs nothing, stuttering the transcript
-    in front of a room costs a lot.
-    """
-
-    def __init__(self, out_dir: Path, label: str):
-        self._dir = out_dir
-        self._label = re.sub(r"[^A-Za-z0-9]+", "-", label).strip("-") or "channel"
-        self._q: queue.Queue = queue.Queue(maxsize=_RECORD_QUEUE_BLOCKS)
-        self._running = True
-        self._dropped = 0
-        self._day: str | None = None
-        self._fh = None
-        threading.Thread(
-            target=self._supervised_writer, daemon=True, name=f"rec-{self._label}"
-        ).start()
-
-    def write(self, block: np.ndarray) -> None:
-        """Called from the audio callback. Must not block and must not raise.
-
-        The bare `except` is the point, not sloppiness: whatever goes wrong in
-        here, the one outcome that is unacceptable is an exception escaping into
-        PortAudio's realtime thread and killing live transcription for the sake
-        of a corpus.
-        """
-        try:
-            self._q.put_nowait(block.copy())
-        except queue.Full:
-            self._dropped += 1
-            if self._dropped % 100 == 1:
-                log.error(
-                    "transcript",
-                    f"🎙️ raw recorder [{self._label}] behind — dropped {self._dropped} blocks",
-                )
-        except BaseException as exc:  # noqa: BLE001 — deliberately everything
-            self._dropped += 1
-            if self._dropped % 100 == 1:
-                log.error("transcript", f"🎙️ raw recorder write failed: {exc!r}")
-
-    def _supervised_writer(self):
-        # Same rule as every other thread here: never die quietly. A recorder
-        # that stops is invisible — transcription carries on perfectly.
-        while self._running:
-            try:
-                self._writer_loop()
-                return
-            except BaseException as exc:  # noqa: BLE001 — deliberately everything
-                log.error("transcript", f"🎙️ raw recorder crashed, restarting: {exc!r}")
-                time.sleep(2)
-
-    def _writer_loop(self):
-        while self._running:
-            try:
-                block = self._q.get(timeout=1)
-            except queue.Empty:
-                continue
-            day = datetime.now().strftime("%Y-%m-%d")
-            if day != self._day:
-                self._open_for(day)
-            try:
-                # Clip, do not wrap. PortAudio's float32 is not bounded to +-1.0, and
-                # `.astype(np.int16)` wraps on overflow: 1.2 becomes -26216, a
-                # polarity-flipped spike. That corrupts exactly the loud in-room
-                # speech this corpus exists to capture, it is inaudible in the
-                # live path, and it stays invisible until the data is used.
-                clipped = np.clip(block, -1.0, 1.0)
-                self._fh.write((clipped * 32767).astype(np.int16).tobytes())
-                self._fh.flush()
-            except Exception as exc:
-                log.error("transcript", f"🎙️ raw write failed: {exc}")
-
-    def _open_for(self, day: str):
-        """Headerless PCM, appended — and both halves of that are deliberate.
-
-        **Appended**, because the heartbeat restarts whisper several times a day
-        and a fresh file per run would shatter the day into fragments that no
-        longer line up with the transcript's clock.
-
-        **Headerless**, because a WAV cannot do this. Python's `wave` module has
-        no append mode at all, and more importantly a WAV only writes its frame
-        count on `close()` — while this process is routinely killed outright
-        (the quiet-crash handlers `_exit`, the watchdog force-restarts it), which
-        would leave a file declaring itself empty. Raw PCM is just bytes: a
-        `kill -9` costs the last block and nothing else.
-
-        Read it back with the format that is in the filename:
-            ffmpeg -f s16le -ar 16000 -ac 1 -i <file> out.wav
-        """
-        self._close()
-        self._dir.mkdir(parents=True, exist_ok=True)
-        path = self._dir / f"{day}-{self._label}.s16le16k.pcm"
-        self._fh = open(path, "ab")
-        self._day = day
-        log.info("transcript", f"🔴 recording raw audio → {path}")
-
-    def _close(self):
-        if self._fh:
-            try:
-                self._fh.close()
-            except Exception:
-                pass
-            self._fh = None
-
-    def stop(self):
-        self._running = False
-        self._close()
-
-
 class _ChannelCapture:
     def __init__(
         self,
@@ -758,8 +597,6 @@ class _ChannelCapture:
         tx_queue: queue.Queue,
         device_name: str = "",
         resolve_fn=None,
-        recorder: "_RawRecorder | None" = None,
-        corpus=None,
         on_open=None,
         battery=None,
     ):
@@ -773,14 +610,9 @@ class _ChannelCapture:
         # — and only the first used to tell the app. Reporting from the one
         # spot both go through is what keeps the menu-bar glyph honest.
         self._on_open = on_open
-        self._recorder = recorder
         # `battery_audio.SessionRecorder | None` — set only in capture-only
         # mode, where it is the whole job; `tx_queue` is then None.
         self._battery = battery
-        # `UtteranceRecorder | None` — the training corpus. Typed loosely so the
-        # import stays optional: a missing `corpus_recorder` module must not be
-        # able to stop transcription.
-        self._corpus = corpus
         self._queue = tx_queue
         self._buf = np.zeros(0, dtype=np.float32)
         self._chunk = int(_SAMPLE_RATE * _CHUNK_SEC)
@@ -833,12 +665,8 @@ class _ChannelCapture:
 
     def stop(self):
         self._running = False
-        if self._recorder is not None:
-            self._recorder.stop()
         if self._battery is not None:
             self._battery.stop()
-        if self._corpus is not None:
-            self._corpus.stop()
         if self._stream:
             try:
                 self._stream.stop()
@@ -1005,11 +833,6 @@ class _ChannelCapture:
         self._last_block_at = time.monotonic()
         block = indata[:, 0]
         self._check_dead_input(block)
-        # Recorded BEFORE any gating: the corpus needs the silence and the
-        # below-threshold audio too, since the gate itself is one of the things
-        # the speaker work may want to change.
-        if self._recorder is not None:
-            self._recorder.write(block)
         threshold = self._current_threshold()
         if self._battery is not None:
             self._battery.write(block, self.device_name, threshold)
@@ -1020,12 +843,6 @@ class _ChannelCapture:
                 self._report_voice()
             return
         self._buf = np.concatenate([self._buf, block])
-        # The training corpus gets the same block and the same threshold the
-        # transcription is about to use, so there is one definition of "somebody
-        # is talking" in this process rather than a second one that disagrees on
-        # exactly the marginal blocks. Like the raw recorder, it only queues.
-        if self._corpus is not None:
-            self._corpus.write(block, threshold, self.device_name)
 
         while len(self._buf) >= self._chunk:
             chunk = self._buf[: self._chunk].copy()
@@ -1627,54 +1444,6 @@ class WhisperTranscriptionRunner:
             log.error("transcript", f"🔋 battery recorder unavailable: {exc!r}")
             return None
 
-    def _make_recorder(self, label: str) -> "_RawRecorder | None":
-        if not _RECORD_RAW_ON:
-            return None
-        try:
-            return _RawRecorder(self.output_dir / "raw-audio", label)
-        except Exception as exc:
-            # Recording is a nice-to-have for a corpus; transcription is the job.
-            # A recorder that cannot start must never take whisper down with it.
-            log.error("transcript", f"🎙️ raw recorder disabled: {exc}")
-            return None
-
-    def _make_corpus(self, label: str):
-        """The utterance corpus for one channel, or `None` and a reason.
-
-        Built here rather than in `_ChannelCapture` because it needs the
-        speaker scorer, and the scorer needs the output folder that holds the
-        enrolled voiceprint. Every failure path returns `None`: this is a
-        collector bolted onto a pipeline whose job is transcription, and it must
-        never be able to cost a word.
-        """
-        if not _VOICE_CORPUS_ON:
-            return None
-        try:
-            from corpus_recorder import UtteranceRecorder, Window
-
-            window = Window.parse(_VOICE_CORPUS_WINDOW)
-            # Its own scorer instance. Sharing the transcriber's would mean two
-            # threads inside one ONNX session, and the model is small enough
-            # that a second copy is cheaper than the lock would be.
-            recorder = UtteranceRecorder(
-                _VOICE_CORPUS_DIR,
-                label,
-                window,
-                scorer=_make_speaker_scorer(self.output_dir),
-                log=log,
-                me_speaker=_ME_SPEAKER,
-                audience_speaker=_AUD_SPEAKER,
-            )
-            log.info(
-                "transcript",
-                f"🎓 voice corpus on → {_VOICE_CORPUS_DIR} "
-                f"({'always' if window.always else _VOICE_CORPUS_WINDOW})",
-            )
-            return recorder
-        except Exception as exc:  # noqa: BLE001
-            log.error("transcript", f"🎓 voice corpus disabled: {exc!r}")
-            return None
-
     def start(self):
         # Capture-only (🔋) has nothing to transcribe, so nothing to queue: a
         # `None` queue is what tells each channel to stop at the recorder.
@@ -1695,11 +1464,6 @@ class WhisperTranscriptionRunner:
                 tx_queue,
                 me_name,
                 resolve_fn=lambda: _resolve_device_coreaudio(_ME_PATTERNS),
-                recorder=self._make_recorder(_ME_SPEAKER),
-                # Victor's channel only. The audience channel is the Zoom
-                # loopback — other people's voices, and the wrong training data
-                # for a model being fine-tuned on one speaker.
-                corpus=None if _CAPTURE_ONLY else self._make_corpus(_ME_SPEAKER),
                 on_open=self._announce_source,
                 battery=self._make_battery(_ME_SPEAKER),
             )
@@ -1719,9 +1483,6 @@ class WhisperTranscriptionRunner:
                     _AUD_SPEAKER,
                     tx_queue,
                     aud_name,
-                    recorder=(
-                        self._make_recorder(_AUD_SPEAKER) if _RECORD_RAW_ALL else None
-                    ),
                     # The room channel too: a meeting's other side arrives
                     # here, through the Zoom loopback, and nowhere else.
                     battery=self._make_battery(_AUD_SPEAKER),

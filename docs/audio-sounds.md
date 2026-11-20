@@ -173,7 +173,7 @@ the effects app for the same cap at play time (`VideoCeiling`, in `VideoGain.swi
 **The relay never carries `/voice/`** (`HttpAccessPolicy.relayMayCall`, counted in
 `/test/voice/state` as `relayRefused`): the tablet polls it over USB/LAN only.
 
-## ⏺️ Record voice (`VoiceRecorder`, 2026-11-12)
+## ⏺️ Record voice snippet (`VoiceRecorder`, 2026-11-12)
 
 A row under 🎬 Live Captions, in the 🎙️ mic item's menu since 2026-11-20: **⏺️ Record voice** writes what the room
 says into `~/Downloads/<yyyy-MM-dd_HH-mm-ss>.m4a` (AAC mono, 48 kHz, 128 kbps —
@@ -195,6 +195,7 @@ ten minutes the same day and was moved here: it is the room's speech, not an eff
 - **No time limit** — a recording is stopped by Victor. A quit waits up to 2 s
   for the file to be finalised (`stopAndWait` in `applicationWillTerminate`);
   an unplugged mic ends the take with an error but keeps the file.
+- **Noise-filtered since 2026-11-20** (Victor: *"record voice snippet … și trebuie să filtreze zgomotul"*; the row was `⏺️ Record voice`). When the 🪄 Victor Mic app answers on 55128 and its device (`VictorMic_UID`) is present, the take is recorded **from "Victor Mic"** — the system default input with DeepFilterNet3 applied live. `SystemMicKeeper` keeps that default on the same pick as the transcription, so filtering does not change which microphone is heard, and reading the device is what wakes the Victor Mic app. With Victor Mic down the raw microphone is recorded as before and an error says the take is unfiltered; with Victor Mic switched to raw (its A/B) the error says that too.
 - Tests: `VoiceRecorderTests` (the device choice against the 2026-11-12 desk).
 
 ## 🪄 Victor Mic row (`VictorMicLink`, 2026-11-20)

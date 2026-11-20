@@ -2,7 +2,7 @@ import AppKit
 import AVFoundation
 import Foundation
 
-/// ⏺️ Record voice — what the people in the room say, into an .m4a in
+/// ⏺️ Record voice snippet — what the people in the room say, into an .m4a in
 /// ~/Downloads (2026-11-12, Victor: *"Record audio, which has a stop icon
 /// somewhere displayed so I can capture the voice of people"*).
 ///
@@ -14,6 +14,15 @@ import Foundation
 /// laptop lid is the recording nobody wanted (measured that afternoon: default
 /// input `MacBook Pro Microphone`, DJI `Wireless Mic Rx` connected).
 /// A second reader of the same input is fine on macOS — whisper keeps hearing it.
+///
+/// **Noise-filtered through 🪄 Victor Mic** (2026-11-20, Victor: *"record voice
+/// snippet … și trebuie să filtreze zgomotul"*): when the Victor Mic app answers
+/// and its device is present, the take is recorded from "Victor Mic" — the system
+/// default input with DeepFilterNet3 applied live. That default is the same pick
+/// as above (`SystemMicKeeper` keeps it on the 🎙️ menu's choice / the roster
+/// ladder), so filtering does not change *which* microphone is heard. Reading the
+/// device is what wakes the Victor Mic app up. Without it, the raw microphone is
+/// recorded and an error says the take is unfiltered.
 ///
 /// **The stop button is its own status item**, a big red dot and the elapsed time,
 /// up only while recording — the shape `TartVMIndicator` uses for a running VM.
@@ -71,6 +80,14 @@ final class VoiceRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
 
     // MARK: device choice (pure, tested)
 
+    /// The CoreAudio UID of the "Victor Mic" input (victor-mic's HAL driver).
+    static let victorMicUID = "VictorMic_UID"
+
+    /// Index of the noise-filtered device, when its app is up to feed it.
+    static func pickFiltered(uids: [String], victorMicUp: Bool) -> Int? {
+        victorMicUp ? uids.firstIndex(of: victorMicUID) : nil
+    }
+
     /// Index into `names` of the device to record, or nil = the system default.
     static func pick(names: [String], preferredPattern: String?) -> Int? {
         func match(_ pattern: String) -> Int? {
@@ -104,6 +121,14 @@ final class VoiceRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
 
     private func chooseDevice() -> AVCaptureDevice? {
         let devices = Self.audioDevices()
+        let state = VictorMicLink.shared.state
+        if let i = Self.pickFiltered(uids: devices.map(\.uniqueID), victorMicUp: state?.driver == true) {
+            if state?.clean == false {
+                overlayError("⏺️ Victor Mic is set to raw (A/B) — this snippet is NOT noise-filtered")
+            }
+            return devices[i]
+        }
+        overlayError("⏺️ Victor Mic app not running — recording the raw microphone, unfiltered")
         if let i = Self.pick(names: devices.map(\.localizedName),
                              preferredPattern: currentTranscribePattern?()) {
             return devices[i]
@@ -114,11 +139,11 @@ final class VoiceRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
     private func begin() {
         guard session == nil else { return }
         guard let device = chooseDevice() else {
-            overlayError("⏺️ Record voice: no microphone found")
+            overlayError("⏺️ Record voice snippet: no microphone found")
             return
         }
         guard let url = DownloadsFolder.freshURL(ext: "m4a") else {
-            overlayError("⏺️ Record voice: no Downloads folder")
+            overlayError("⏺️ Record voice snippet: no Downloads folder")
             return
         }
         do {

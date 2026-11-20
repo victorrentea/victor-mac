@@ -99,14 +99,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     /// `/test/banner/buttons?fresh=1` pills, kept alive while they are up.
     private var testStackBanners: [BottomLeftBanner] = []
     private var testButtonsOutcome = "none"
-    /// Re-reads the 🔴 raw-capture flag for the menu row. Stored because the
-    /// flag is a *file* — armable from outside this process — so the row cannot
-    /// be updated only when it is clicked.
-    private var refreshRecordRawTitle: (() -> Void)?
-    /// The same for the 🎓 corpus row, and for the same reason plus one: its
-    /// counter moves every time Victor says a sentence, so a title painted once
-    /// at launch would be wrong within a minute.
-    private var refreshVoiceCorpusTitle: (() -> Void)?
     /// Keeps the wired USB tunnel (`adb reverse`) armed so the tablet can reach
     /// the Mac at `localhost:55123` when there's no shared WiFi.
     private var usbTunnelKeeper: UsbTunnelKeeper?
@@ -878,17 +870,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 env["TRANSCRIPTION_FOLDER"] = folder.path
                 env["WHISPER_PREFERRED_SOURCE_FILE"] = folder.appendingPathComponent(".preferred-me-source").path
                 env["WHISPER_DJI_GATE_FILE"] = folder.appendingPathComponent(Self.djiGateFileName).path
-                // Read at every launch. Note what that does NOT mean: the
-                // 60 s heartbeat only revives a whisper that has died or gone
-                // mute for five minutes, so a flag armed while a healthy
-                // whisper is running is not picked up on its own. Something has
-                // to bounce the process — the menu toggle, or a `pkill -f
-                // whisper_runner` from a scheduled job, which the heartbeat
-                // then restarts within a minute.
-                env.merge(RawAudioRecording.env(for: folder)) { _, new in new }
-                // Same "read at launch" caveat as above, and the same cure: the
-                // toggle bounces whisper through the controller.
-                env.merge(VoiceCorpusRecording.env(for: folder)) { _, new in new }
             }
             DispatchQueue.global(qos: .userInitiated).async {
                 whisperManager?.start(env: env)
@@ -922,17 +903,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             controller?.setBatteryRecording(false)
         }
         self.transcriptionController = controller
-
-        // 🔴 Raw capture. Whisper only reads the flag at launch, so flipping it
-        // has to bounce the process — a stop/start through the controller,
-        // including the beat PortAudio needs to let go of the devices.
-        let refreshRecordRawTitle: () -> Void = { [weak self] in
-            guard let self else { return }
-            self.menuBarManager.setRecordingRaw(
-                RawAudioRecording.isEnabled(in: self.transcriptionFolder),
-                hours: RawAudioRecording.hoursRecorded(in: self.transcriptionFolder))
-        }
-        refreshRecordRawTitle()
 
         // 🎬 Live subtitles. The row is a readout, so it is repainted from the
         // controller on every state change and once a second while the menu is
@@ -970,56 +940,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             self.menuBarManager.setLiveCaptions(on: true, title: self.liveCaptions.menuTitle)
         }
         menuBarManager.setLiveCaptions(on: false, title: liveCaptions.menuTitle)
-
-        menuBarManager.onToggleRecordRaw = { [weak self] in
-            guard let self else { return }
-            let folder = self.transcriptionFolder
-            let wanted = !RawAudioRecording.isEnabled(in: folder)
-            let actual = RawAudioRecording.set(wanted, in: folder)
-            refreshRecordRawTitle()
-            if actual != wanted {
-                overlayError("Could not \(wanted ? "arm" : "clear") raw audio capture")
-                return
-            }
-            self.statusBanner?.showOnPresence(
-                text: actual ? "recording raw audio" : "raw audio capture off",
-                sound: actual ? StatusBannerSound.start : StatusBannerSound.stop)
-            // Through the controller, never a bare stop/start: on battery a
-            // direct bounce started Whisper with nothing left to stop it again.
-            controller.restartIfShouldBeRunning(stop: stopWhisper, start: startWhisper)
-        }
-        self.refreshRecordRawTitle = refreshRecordRawTitle
-
-        // 🎓 Voice corpus. Identical arming mechanics to the 🔴 row above — flag
-        // file, read at launch, bounced through the controller — and a
-        // deliberately different switch, because the two collect different
-        // things for different lengths of time. See `VoiceCorpusRecording`.
-        let refreshVoiceCorpusTitle: () -> Void = { [weak self] in
-            guard let self else { return }
-            let on = VoiceCorpusRecording.isEnabled(in: self.transcriptionFolder)
-            // Only count when it is on: the manifest walk is cheap but it is a
-            // file read, and an off row has nothing to report anyway.
-            let stats = on ? VoiceCorpusRecording.collected() : (samples: 0, minutes: 0.0)
-            self.menuBarManager.setCollectingVoiceCorpus(
-                on, samples: stats.samples, minutes: stats.minutes)
-        }
-        refreshVoiceCorpusTitle()
-        menuBarManager.onToggleVoiceCorpus = { [weak self] in
-            guard let self else { return }
-            let folder = self.transcriptionFolder
-            let wanted = !VoiceCorpusRecording.isEnabled(in: folder)
-            let actual = VoiceCorpusRecording.set(wanted, in: folder)
-            refreshVoiceCorpusTitle()
-            if actual != wanted {
-                overlayError("Could not \(wanted ? "start" : "stop") voice corpus collection")
-                return
-            }
-            self.statusBanner?.showOnPresence(
-                text: actual ? "collecting voice corpus" : "voice corpus off",
-                sound: actual ? StatusBannerSound.start : StatusBannerSound.stop)
-            controller.restartIfShouldBeRunning(stop: stopWhisper, start: startWhisper)
-        }
-        self.refreshVoiceCorpusTitle = refreshVoiceCorpusTitle
 
         let pm = PowerMonitor()
         pm.onSwitchToBattery = { [weak self, weak controller] in
@@ -1750,15 +1670,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         menuBarManager.onPickSource = { id in MicPreference.write(id) }
         MicPreference.watch { [weak self] in self?.adoptMicChoice() }
         adoptMicChoice()
-        menuBarManager.onMenuOpened = { [weak self] in
-            // Opening the menu is also the only moment the 🔴 row can be read,
-            // so it is the right moment to re-read the flag behind it: it may
-            // have been armed by something other than a click, and the hours
-            // counter would otherwise be frozen at whatever it said when
-            // recording started.
-            self?.refreshRecordRawTitle?()
-            self?.refreshVoiceCorpusTitle?()
-        }
         menuBarManager.onTakeScreenshot = {
             DispatchQueue.global(qos: .userInitiated).async { ScreenshotManager.takeScreenshot() }
         }

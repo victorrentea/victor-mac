@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 20, 22:12"
+    static let BUILD_TIME = "Nov 20, 22:30"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -47,15 +47,6 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     // data moved to Victor Net (`victor-net`, its own menu bar icon) on 2026-10-20.
     private(set) var commandOverlayItem: NSMenuItem!
     private(set) var transcribeItem: NSMenuItem!
-    private(set) var recordRawItem: NSMenuItem!
-    private(set) var voiceCorpusItem: NSMenuItem!
-    // Mirrored here because AppDelegate reports the raw-capture state BEFORE the
-    // menu is built; the row (and the parent's 🔴) is painted from these.
-    private var isRecordingRaw = false
-    private var recordedRawHours: Double = 0
-    private var isCollectingVoiceCorpus = false
-    private var voiceCorpusSamples = 0
-    private var voiceCorpusMinutes: Double = 0
     private(set) var wsStatusItem: NSMenuItem!
     private var memoryPressureItem: NSMenuItem!
     private var clipboardLinkItem: NSMenuItem!
@@ -96,11 +87,11 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private var voiceRecordItem: NSMenuItem!
     private var summaryItem: NSMenuItem!
     private var factCheckItem: NSMenuItem!
+    private var factCheckMinuteItem: NSMenuItem!
     private var wsConnected: Bool = false
     private var sessionActive: Bool = false
     private(set) var tailItem: NSMenuItem!
     private(set) var fluxInboxItem: NSMenuItem!
-    private var transcribeSubmenu: NSMenu!
 
     private(set) var resumeItem: NSMenuItem!
     /// ☕️ Break duration rows, with their plain titles — one of them gets the 👈.
@@ -127,14 +118,12 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     var onQuit: (() -> Void)?
     var onToggleDarkMode: (() -> Void)?
     var onMonitor: (() -> Void)?
-    var onToggleRecordRaw: (() -> Void)?
 
     /// 🎬 Live subtitles, clicked. One switch, both ways.
     var onToggleLiveCaptions: (() -> Void)?
 
     /// Once a second while the menu is open — for rows whose title is a clock.
     var onMenuTick: (() -> Void)?
-    var onToggleVoiceCorpus: (() -> Void)?
     var onKillPort: ((Int) -> Void)?
     var onKillPortPrompt: (() -> Void)?
     var onTakeScreenshot: (() -> Void)?
@@ -317,38 +306,13 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // Transcribe status row (read-only; opens the transcription submenu).
         // Transcription runs automatically on AC — no manual start/stop here.
         transcribeItem = voiceItem("🎙️ Transcribing", action: nil)
-        transcribeSubmenu = NSMenu()
-        transcribeSubmenu.autoenablesItems = false
 
-        // 🔴 Raw audio capture — built here, but NOT added to the main menu: it
-        // lives at the bottom of the Transcribing submenu, under a separator,
-        // next to the mic that feeds it. It is a rarely-flipped setting of the
-        // transcription, not a feature of its own, and the top level is a list
-        // of features. The one thing that must survive the move is its
-        // visibility: a state you cannot see is a state you forget to turn off,
-        // and this one fills the disk and records a room full of people — so
-        // while it is on, the 🔴 also rides on the parent "Transcribing" title,
-        // which is visible without opening anything.
-        recordRawItem = NSMenuItem(title: RawAudioMenu.off, action: #selector(toggleRecordRawAction), keyEquivalent: "")
-        recordRawItem.target = self
-        recordRawItem.isEnabled = true
-
-        // 🎓 The training corpus, directly under the 🔴 raw capture because they
-        // are the same kind of thing — a microphone writing to disk — and the
-        // pair is easier to reason about adjacent than scattered. The title
-        // carries the count rather than the size for the same reason the raw row
-        // carries hours: the question after "is it on" is "how much have I got",
-        // and the answer that matters is minutes of speech, not megabytes.
-        voiceCorpusItem = NSMenuItem(title: VoiceCorpusMenu.off, action: #selector(toggleVoiceCorpusAction), keyEquivalent: "")
-        voiceCorpusItem.target = self
-        voiceCorpusItem.isEnabled = true
-
-        // 🐕 Tail (was Monitor). Built here but NOT added to the main menu: it
-        // moved into the 💬 Transcribing submenu (2026-09-14), above its own
-        // separator. Its title is a readout OF the transcription — "🐕 Tail
-        // 2 minutes ago" answers how fresh the transcript is — so it belongs
-        // under the row that says whether transcription is running at all,
-        // not next to it at the top level.
+        // 🐕 Tail (was Monitor). Its title is a readout OF the transcription —
+        // "🐕 Tail 2 minutes ago" answers how fresh the transcript is — so it sits
+        // right under the row that says whether transcription is running. Top
+        // level of the 🎙️ menu since 2026-11-20 (Victor: *"tail iese top level"*);
+        // it was alone in the Transcribing submenu once raw capture and the voice
+        // corpus were deleted, and a submenu for one row is a click for nothing.
         tailItem = NSMenuItem(title: "🐕 Tail", action: #selector(monitorAction), keyEquivalent: "")
         tailItem.target = self
         tailItem.isEnabled = true
@@ -382,6 +346,9 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // the whole contract: it checks the topic being taught, not the
         // sentence that just ended.
         factCheckItem = voiceItem("🔬 Fact-check last 30 s", action: #selector(researchProofAction))
+        // 🔬 The same check over a whole minute (2026-11-20, Victor: *"add fact check
+        // last 1 min"*): for a claim that took a few sentences to make.
+        factCheckMinuteItem = voiceItem("🔬 Fact-check last 1 min", action: #selector(factCheckMinuteAction))
 
         // 🎬 Live subtitles — the band across the bottom of the projector,
         // fed by ElevenLabs Scribe v2 Realtime **only while it is on**.
@@ -1048,7 +1015,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         voiceRecordItem.title = on ? VoiceRecordMenu.stop : VoiceRecordMenu.start
         voiceRecordItem.toolTip = on
             ? "Stop, save the .m4a and show it in Finder (the red dot in the menu bar does the same)."
-            : "Record the mic transcription hears (DJI when connected) into ~/Downloads; a big red dot appears in the menu bar — click it to stop."
+            : "Record the mic transcription hears, noise-filtered through 🪄 Victor Mic, into ~/Downloads; a big red dot appears in the menu bar — click it to stop."
     }
 
     /// The `MicRoster` pattern of the mic transcription last reported, for
@@ -1066,87 +1033,6 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     func setLiveCaptions(on: Bool, title: String) {
         guard liveCaptionsItem != nil else { return }
         liveCaptionsItem.title = Self.ticked(title, on)
-    }
-
-    @objc private func toggleRecordRawAction() {
-        onToggleRecordRaw?()
-    }
-
-    @objc private func toggleVoiceCorpusAction() {
-        onToggleVoiceCorpus?()
-    }
-
-    /// Titles for the 🔴 raw-capture row, kept together so the *on* state stays
-    /// unmistakable at a glance — this is the row that says a microphone is
-    /// being written to disk.
-    /// The 🔋 travel switch's row title. **The tick is part of the label, not
-    /// the menu item's `state`** — Victor, seeing the native one: *"toate
-    /// meniurile s-au dat, puțin, la dreapta"*. AppKit reserves a check column
-    /// for the whole menu the moment one item in it is ticked, so a single
-    /// checkbox shifts every other row's text sideways; and this menu's rows
-    /// are read by their leading emoji, so that shift moves the one thing the
-    /// eye uses to find a row. Putting the mark where every other row keeps its
-    /// emoji costs the menu nothing and reads the same.
-    ///
-    /// Off is the bare words, with nothing in front — also Victor's, and the
-    /// reason there is no 🔋 here: a mark in *both* states is not a checkbox.
-    enum RawAudioMenu {
-        static let off = "Record raw audio"
-        static func on(hours: Double) -> String {
-            hours < 0.1
-                ? "🔴 Recording raw audio"
-                : String(format: "🔴 Recording raw audio — %.1f h", hours)
-        }
-    }
-
-    /// - Parameter hours: audio already on disk for today, so the row also
-    ///   answers "how much have I collected", which is the second question
-    ///   anyone asks after "is it on".
-    func setRecordingRaw(_ on: Bool, hours: Double = 0) {
-        isRecordingRaw = on
-        recordedRawHours = hours
-        applyRecordRawState()
-        // Repaint the parent row: while capture is on it carries the 🔴 that used
-        // to be the whole point of the top-level row.
-        if transcribeItem != nil { updateTranscribeTitle() }
-    }
-
-    private func applyRecordRawState() {
-        guard let item = recordRawItem else { return }
-        item.title = isRecordingRaw ? RawAudioMenu.on(hours: recordedRawHours) : RawAudioMenu.off
-        item.state = isRecordingRaw ? .on : .off
-    }
-
-    /// Titles for the 🎓 corpus row. Separate from `RawAudioMenu` on purpose:
-    /// the two rows sit next to each other and would be read as one setting if
-    /// they shared a vocabulary.
-    enum VoiceCorpusMenu {
-        static let off = "Collect voice corpus"
-        static func on(samples: Int, minutes: Double) -> String {
-            samples == 0
-                ? "🎓 Collecting voice corpus"
-                : String(format: "🎓 Collecting voice corpus — %d / %.0f min", samples, minutes)
-        }
-    }
-
-    /// - Parameters:
-    ///   - samples: utterances collected today.
-    ///   - minutes: speech in them. Not disk: the corpus is short of *hours of
-    ///     speech*, and megabytes would flatter a day of long quiet samples.
-    func setCollectingVoiceCorpus(_ on: Bool, samples: Int = 0, minutes: Double = 0) {
-        isCollectingVoiceCorpus = on
-        voiceCorpusSamples = samples
-        voiceCorpusMinutes = minutes
-        applyVoiceCorpusState()
-    }
-
-    private func applyVoiceCorpusState() {
-        guard let item = voiceCorpusItem else { return }
-        item.title =
-            isCollectingVoiceCorpus
-            ? VoiceCorpusMenu.on(samples: voiceCorpusSamples, minutes: voiceCorpusMinutes)
-            : VoiceCorpusMenu.off
-        item.state = isCollectingVoiceCorpus ? .on : .off
     }
 
     @objc private func toggleDarkModeAction() {
@@ -1631,7 +1517,16 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         updateTailItem()
         refreshVoiceRecordItem()
         onMenuTick?()   // the 🎬 row's minutes and dollars
-        for item in [transcribeItem, summaryItem, factCheckItem, liveCaptionsItem, voiceRecordItem] {
+        menu.addItem(transcribeItem)
+        menu.addItem(tailItem)
+        // 🔋 Only off AC: on AC there is nothing to switch.
+        if powerState != .onAC {
+            let item = NSMenuItem(title: isRecordingOnBattery ? BatteryRecordingMenu.stop : BatteryRecordingMenu.start,
+                                  action: #selector(toggleBatteryRecordingAction), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+        for item in [summaryItem, factCheckItem, factCheckMinuteItem, liveCaptionsItem, voiceRecordItem] {
             if let item { menu.addItem(item) }
         }
         menu.addItem(.separator())
@@ -1904,8 +1799,9 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // `setTranscribing(false)`, which renders the row once it exists.
         guard transcribeItem != nil else { return }
         // Read-only status row. Transcription runs automatically on AC and
-        // pauses on battery — there is no manual start/stop. The only
-        // interaction is picking which mic captures your voice (submenu).
+        // pauses on battery — there is no manual start/stop, and since
+        // 2026-11-20 no submenu either: 🐕 Tail and the 🔋 switch sit right
+        // under it in the 🎙️ menu.
 
         // Reset everything; configure per-state below.
         transcribeItem.image = nil
@@ -1915,29 +1811,19 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         transcribeItem.keyEquivalent = ""
         transcribeItem.keyEquivalentModifierMask = []
 
-        // The 🔴 marker: raw capture now lives inside the submenu, so the parent
-        // is the only place a running capture can still be SEEN without opening
-        // anything. It rides on every state, including the paused ones — the
-        // mic keeps being written to disk regardless of what transcription does.
-        let raw = isRecordingRaw ? "🔴 " : ""
-
-        // The submenu is attached in EVERY state, and the row stays enabled, for
-        // the same reason: with the toggle inside it, a disabled parent would
-        // make a running capture impossible to stop while transcription happens
-        // to be off or battery-paused — the exact moment you most want it gone.
-        transcribeItem.submenu = transcribeSubmenu
+        // Enabled with no action: the 🎙️ menu has `autoenablesItems = false`, so
+        // the row reads in full ink instead of greyed out.
         transcribeItem.isEnabled = true
-        rebuildTranscribeSubmenu()
 
         if isTranscriptionPausedByBattery {
-            transcribeItem.title = raw + "Off - On Battery"
+            transcribeItem.title = "Off - On Battery"
             transcribeItem.image = loadResourceIcon("icon_leaf")
             return
         }
         if isRecordingOnBattery {
             // 🔋 The microphones go to disk; the text comes when AC does.
             let mic = isTranscribing ? MicRoster.byGlyph(transcribeSource) : nil
-            transcribeItem.title = raw + "👂 Recording on battery" + (mic.map { ": \($0.glyph) \($0.short)" } ?? "")
+            transcribeItem.title = "👂 Recording on battery" + (mic.map { ": \($0.glyph) \($0.short)" } ?? "")
             transcribeItem.image = nil
             return
         }
@@ -1960,39 +1846,13 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             // `🎙️ Transcribing: 🎤 DJI 80 %`, or `— no TX`), only while the
             // receiver's USB status is live; other microphones get nothing.
             let dji = mic?.id == "rx" ? djiMenuSuffix?().map { " \($0)" } ?? "" : ""
-            transcribeItem.title = raw + "🎙️ Transcribing" + (mic.map { ": \($0.glyph) \($0.short)" } ?? "") + dji
+            transcribeItem.title = "🎙️ Transcribing" + (mic.map { ": \($0.glyph) \($0.short)" } ?? "") + dji
             transcribeItem.image = nil
         } else {
             // On AC but momentarily down (starting up, or a crash before the
             // heartbeat restart). Auto-recovers; nothing for the user to do.
-            transcribeItem.title = raw + "🎙️ Transcribing (off)"
+            transcribeItem.title = "🎙️ Transcribing (off)"
         }
-    }
-
-    private func rebuildTranscribeSubmenu() {
-        transcribeSubmenu.removeAllItems()
-        // 🐕 Tail first, alone above a separator: the parent row says whether
-        // transcription is running, this says how fresh the transcript is and
-        // opens it. Everything under the line is a *setting* of the
-        // transcription — which mic is heard, and whether it also goes to disk
-        // — so the line is what keeps a readout from being read as one.
-        transcribeSubmenu.addItem(tailItem)
-        transcribeSubmenu.addItem(.separator())
-        // 🔋 Only off AC, and first among the settings: it is the one he
-        // reaches for in a hurry, and on AC there is nothing to switch.
-        if powerState != .onAC {
-            let item = NSMenuItem(title: isRecordingOnBattery ? BatteryRecordingMenu.stop : BatteryRecordingMenu.start,
-                                  action: #selector(toggleBatteryRecordingAction), keyEquivalent: "")
-            item.target = self
-            transcribeSubmenu.addItem(item)
-            transcribeSubmenu.addItem(.separator())
-        }
-        // The mic pick (Automatic + roster) left this submenu on 2026-11-20: it
-        // sits flat in the 🎙️ item's own menu, one level up, right under this row.
-        // What stays is whether the heard mic is also written to disk.
-        applyRecordRawState()
-        transcribeSubmenu.addItem(recordRawItem)
-        transcribeSubmenu.addItem(voiceCorpusItem)
     }
 
     /// Automatic + one row per roster mic, ticked by what was picked — the lower
@@ -2058,6 +1918,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
 
     @objc private func researchProofAction() {
         FactCheck.launchNow(reason: "menu")
+    }
+
+    @objc private func factCheckMinuteAction() {
+        FactCheck.launchNow(reason: "menu 1 min", seconds: 60)
     }
 
     @objc private func checkTaskInboxAction() {
@@ -2138,6 +2002,6 @@ class MenuBarManager: NSObject, NSMenuDelegate {
 }
 
 enum VoiceRecordMenu {
-    static let start = "⏺️ Record voice"
+    static let start = "⏺️ Record voice snippet"
     static let stop = "⏹️ Stop recording"
 }

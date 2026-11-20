@@ -1,6 +1,6 @@
 # 🔬 Fact-check
 
-**What it does:** the menu row **🔬 Fact-check last 30 s** (and `GET /test/research-proof`)
+**What it does:** the menu row **🔬 Fact-check last 30 s** (and `GET /test/research-proof`) — or **🔬 Fact-check last 1 min** right under it (2026-11-20, `launchNow(reason:seconds: 60)`), for a claim that took a few sentences —
 takes the last ~30 s of today's transcript and hands it to **Walkie Talkie** as a ⚡ quick
 question. The answer comes up in Walkie's reply pop-up beside the pointer, the way an answer
 to a question Victor dictated does: first words in about a second, signed `— Opus …`, then

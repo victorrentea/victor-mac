@@ -27,16 +27,18 @@ enum FactCheck {
 
     /// Menu click and `GET /test/research-proof`. Main thread or not: nothing
     /// here blocks the caller.
-    static func launchNow(reason: String) {
+    /// - Parameter seconds: how far back to look — 30 s by default, 60 s from
+    ///   the "last 1 min" row.
+    static func launchNow(reason: String, seconds: Double = windowSeconds) {
         guard let folder = transcriptionFolder else {
             overlayError("🔬 fact-check: no transcription folder")
             return fail()
         }
         let parsed = TranscriptTail.parse(TranscriptTail.readTail(of: TranscriptTail.todayFile(in: folder)))
-        let lines = TranscriptTail.lastSeconds(parsed, seconds: windowSeconds)
+        let lines = TranscriptTail.lastSeconds(parsed, seconds: seconds)
         let transcript = TranscriptTail.render(lines)
         guard !lines.isEmpty, TranscriptDistiller.speechWordCount(in: transcript) >= 5 else {
-            overlayInfo("🔬 fact-check (\(reason)): nothing said in the last \(Int(windowSeconds)) s")
+            overlayInfo("🔬 fact-check (\(reason)): nothing said in the last \(Int(seconds)) s")
             return fail()
         }
         let speech = lines.map(\.text).joined(separator: " ")

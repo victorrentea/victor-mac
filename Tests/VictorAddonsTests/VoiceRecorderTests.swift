@@ -31,4 +31,11 @@ final class VoiceRecorderTests: XCTestCase {
         XCTAssertEqual(VoiceRecorder.clock(65.9), "1:05")
         XCTAssertEqual(VoiceRecorder.clock(3725), "1:02:05")
     }
+
+    func testRecordsThroughVictorMicWhenItsAppIsUp() {
+        let uids = ["BuiltInMicrophoneDevice", VoiceRecorder.victorMicUID, "FromWalkie_UID"]
+        XCTAssertEqual(VoiceRecorder.pickFiltered(uids: uids, victorMicUp: true), 1)
+        XCTAssertNil(VoiceRecorder.pickFiltered(uids: uids, victorMicUp: false))
+        XCTAssertNil(VoiceRecorder.pickFiltered(uids: ["BuiltInMicrophoneDevice"], victorMicUp: true))
+    }
 }
