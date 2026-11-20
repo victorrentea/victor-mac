@@ -373,7 +373,7 @@ git commit -m "feat: wire RHTimerMonitor into AppDelegate"
 
 1. Open RH Timer, start a short countdown (e.g. 10 seconds)
 2. Wait for the timer to finish and its window to disappear (or manually close it after making it visible)
-3. Open the Victor Addons menu bar — within 30s of the next poll, "Resumed Xm ago" should appear above "Start Transcribing"
+3. Open the Victor Mac menu bar — within 30s of the next poll, "Resumed Xm ago" should appear above "Start Transcribing"
 4. Open the menu again a minute later — the counter should have incremented
 
 - [ ] **Step 3: Commit build timestamp update**

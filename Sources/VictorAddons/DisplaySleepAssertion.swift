@@ -28,7 +28,7 @@ import IOKit.pwr_mgt
 ///
 /// **Nothing can leak it past the process.** IOPM assertions are owned by the
 /// pid that created them and the kernel drops them when it exits — including on
-/// the `pkill -f "Victor Addons"` half of the standard rebuild loop, which runs
+/// the `pkill -f "Victor Mac"` half of the standard rebuild loop, which runs
 /// no terminate handler. This is the one thing it does better than `LidAwake`'s
 /// kernel `SleepDisabled` flag, which deliberately survives to the next reboot.
 /// Verify either way with `pmset -g assertions`.

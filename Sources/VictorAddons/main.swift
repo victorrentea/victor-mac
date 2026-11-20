@@ -26,7 +26,7 @@ redirectLogsIfNeeded()
 let pidFilePath = "/tmp/VictorAddons.pid"
 let myPid = getpid()
 
-// Verify that a PID actually belongs to a Victor Addons process before killing
+// Verify that a PID actually belongs to a Victor Mac process before killing
 // it. PIDs can be recycled after a hard crash that left the lock file stale, so
 // blindly sending SIGTERM to whatever holds the old PID can murder an unrelated
 // process.
@@ -45,7 +45,7 @@ func pidIsVictorAddons(_ pid: Int32) -> Bool {
     }
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     let comm = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    return comm.contains("Victor Addons")
+    return comm.contains("Victor Mac")
 }
 
 // Kill any previous instance before we start
@@ -67,7 +67,7 @@ if let oldPidStr = try? String(contentsOfFile: pidFilePath, encoding: .utf8)
             kill(oldPid, SIGKILL)
         }
     } else {
-        overlayInfo("Stale PID file (\(oldPid)) — not a Victor Addons process, ignoring")
+        overlayInfo("Stale PID file (\(oldPid)) — not a Victor Mac process, ignoring")
     }
 }
 

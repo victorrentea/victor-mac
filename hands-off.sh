@@ -39,7 +39,7 @@ set -uo pipefail
 
 PORT="${VICTOR_ADDONS_PORT:-55123}"
 BASE="http://localhost:$PORT"
-APP="/Applications/Victor Addons.app"
+APP="/Applications/Victor Mac.app"
 
 TAKEOVER_MARK="${HANDS_OFF_TAKEOVER_FILE:-$HOME/.victor-addons/hands-off.takeover}"
 TAKEOVER_COOLDOWN=60
@@ -58,7 +58,7 @@ ensure_app() {
     curl -fsS --max-time 1 "$BASE/hands-off/state" >/dev/null 2>&1 && return 0
     /bin/sleep 0.5
   done
-  echo "hands-off: Victor Addons is not answering on $BASE — NOT warning him. Do the GUI work anyway at your own risk." >&2
+  echo "hands-off: Victor Mac is not answering on $BASE — NOT warning him. Do the GUI work anyway at your own risk." >&2
   return 1
 }
 

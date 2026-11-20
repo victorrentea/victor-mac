@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds "/Applications/Conversations Backup.app" from conversations-backup.applescript
 # and (re)loads the LaunchAgent that opens it. Signed with the same stable local
-# identity as Victor Addons, so the removable-volume grant survives a rebuild.
+# identity as Victor Mac, so the removable-volume grant survives a rebuild.
 set -euo pipefail
 cd "$(dirname "$0")"
 

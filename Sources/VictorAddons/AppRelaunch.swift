@@ -86,8 +86,8 @@ enum AppRelaunch {
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-c", script]
         // The path travels in the environment, NOT in argv, so the helper's
-        // command line never contains "Victor Addons" — otherwise the deploy
-        // habit of `pkill -f "Victor Addons"` would match and kill the very
+        // command line never contains "Victor Mac" — otherwise the deploy
+        // habit of `pkill -f "Victor Mac"` would match and kill the very
         // helper whose job is to bring the app back.
         var env = ProcessInfo.processInfo.environment
         env["VA_RELAUNCH_TARGET"] = relaunchTarget()

@@ -6,7 +6,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG=/tmp/victor-mac.log
 echo "$(date '+%H:%M:%S') Starting VictorAddons..." >> "$LOG"
 
-BUNDLE_BIN="/Applications/Victor Addons.app/Contents/MacOS/Victor Addons"
+BUNDLE_BIN="/Applications/Victor Mac.app/Contents/MacOS/Victor Mac"
 if [ ! -x "$BUNDLE_BIN" ]; then
     echo "$(date '+%H:%M:%S') VictorAddons not installed — run: ./build-app.sh" >> "$LOG"
     exit 1

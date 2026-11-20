@@ -7,7 +7,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # Build the Swift app
 echo "Building VictorAddons Swift app..."
 cd "$DIR"
-APP_NAME="Victor Addons"
+APP_NAME="Victor Mac"
 APP_DIR="/Applications/$APP_NAME.app"
 CONTENTS="$APP_DIR/Contents"
 MACOS="$CONTENTS/MacOS"
@@ -104,15 +104,15 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Victor Addons needs microphone access for live transcription.</string>
+    <string>Victor Mac needs microphone access for live transcription.</string>
     <key>NSCameraUsageDescription</key>
-    <string>Victor Addons cuts you out of the camera picture for the 🪞 Virtual Desktop share.</string>
+    <string>Victor Mac cuts you out of the camera picture for the 🪞 Virtual Desktop share.</string>
     <key>NSAccessibilityUsageDescription</key>
-    <string>Victor Addons needs accessibility access for keyboard shortcuts and clipboard monitoring.</string>
+    <string>Victor Mac needs accessibility access for keyboard shortcuts and clipboard monitoring.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>macOS shows the Wi-Fi network name only to apps with Location access; Victor Addons reads it to keep the screen awake on your home Wi-Fi.</string>
+    <string>macOS shows the Wi-Fi network name only to apps with Location access; Victor Mac reads it to keep the screen awake on your home Wi-Fi.</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>Victor Addons reconnects your Bluetooth speakers and microphones.</string>
+    <string>Victor Mac reconnects your Bluetooth speakers and microphones.</string>
     <key>NSUserNotificationAlertStyle</key>
     <string>alert</string>
 </dict>
@@ -140,7 +140,7 @@ else
 fi
 
 echo "✅ Installed $APP_DIR"
-echo "   Launch via Spotlight (Cmd+Space) → 'Victor Addons'"
+echo "   Launch via Spotlight (Cmd+Space) → 'Victor Mac'"
 
 # The Chrome half follows the Mac half. An unpacked extension is not reloaded by
 # rebuilding the app — Chrome only re-reads it when someone presses Reload on

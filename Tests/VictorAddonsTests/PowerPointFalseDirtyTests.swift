@@ -25,7 +25,7 @@ final class PowerPointFalseDirtyTests: XCTestCase {
     func testLeavesADeckAloneWhenPowerPointWasAlreadyRunning() {
         var p = PowerPointFalseDirtyPolicy(started: t0)
         XCTAssertNil(p.consume(sample(10, saved: false), appLaunched: t0.addingTimeInterval(-500)),
-                     "Victor Addons restarted next to a deck with real edits")
+                     "Victor Mac restarted next to a deck with real edits")
         var q = PowerPointFalseDirtyPolicy(started: t0)
         XCTAssertNil(q.consume(sample(700, saved: false), appLaunched: t0.addingTimeInterval(100)),
                      "a second deck opened long after launch")

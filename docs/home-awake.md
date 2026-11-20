@@ -53,7 +53,7 @@ line:
 
 ```sh
 defaults write ro.victorrentea.macos-addons HomeAwake.ssids "tzutze,tzutze5"
-# then: pkill -f "Victor Addons"; open "/Applications/Victor Addons.app"
+# then: pkill -f "Victor Mac"; open "/Applications/Victor Mac.app"
 ```
 
 **`tzutze` is measured, not transcribed** (13 Sep 2026). Spoken it is "Țuțe", and
@@ -115,7 +115,7 @@ hour get none.
 ## It cannot leak
 
 IOPM assertions belong to the pid that created them and **the kernel drops them
-when the process exits** — including on the `pkill -f "Victor Addons"` half of
+when the process exits** — including on the `pkill -f "Victor Mac"` half of
 the standard rebuild loop, which runs no terminate handler. This is the one thing
 it does strictly better than 🔋 next door, whose kernel `SleepDisabled` flag
 deliberately survives to the next reboot.
@@ -181,7 +181,7 @@ curl -s localhost:55123/test/home-awake
 - `watching` — whether the timer and CoreWLAN events are armed.
 
 To prove it end to end without waiting for an idle timer: `pmset -g assertions`
-should list a `PreventUserIdleDisplaySleep` named "Victor Addons - home Wi-Fi,
+should list a `PreventUserIdleDisplaySleep` named "Victor Mac - home Wi-Fi,
 screen must not idle-lock" while at home, and the system-wide
 `PreventUserIdleDisplaySleep` counter should read 1. Untick the row and both go
 away within the click.

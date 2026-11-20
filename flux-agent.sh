@@ -1,7 +1,7 @@
 #!/bin/bash
 # flux-agent.sh
 #
-# Triggered by "Victor Addons" (FluxAgentLauncher.swift) whenever new mail from
+# Triggered by "Victor Mac" (FluxAgentLauncher.swift) whenever new mail from
 # Victor lands in victor.flux@agentmail.to. Opens as a FOREGROUND Terminal
 # window running an unattended `claude -p` over the email thread, then mails
 # claude's answer back as a reply in that same thread.

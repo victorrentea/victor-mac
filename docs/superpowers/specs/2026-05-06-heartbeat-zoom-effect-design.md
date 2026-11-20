@@ -22,7 +22,7 @@ Three discrete tweaks to the desktop overlay system:
 
 ```
 ┌─────────────────────────────┐         ┌──────────────────────────────────┐
-│ Android tablet              │         │ Mac (Victor Addons)              │
+│ Android tablet              │         │ Mac (Victor Mac)              │
 │  MainActivity.kt            │ HTTP    │  TabletHttpServer                │
 │  tap heartbeat.mp3          │────────▶│  /effect/heartbeat               │
 │  → macEffect("heartbeat")   │  GET    │  → AppDelegate.onEffect          │
@@ -154,7 +154,7 @@ Equivalent to `bounds.height * 0.05`. Kept as the addition expression to make th
 - Manual: tap sound 27 on tablet — claps should appear ~1 s after the audio starts.
 - Manual: trigger fail effect (existing path) — stamp should sit higher than before, no longer touching the bottom edge.
 - Build: `swift build` and `swift test` must pass.
-- Deploy: per project memory `feedback_push_build_restart.md`, after the change runs `git push && ./build-app.sh && pkill -f "Victor Addons" && open "/Applications/Victor Addons.app"`.
+- Deploy: per project memory `feedback_push_build_restart.md`, after the change runs `git push && ./build-app.sh && pkill -f "Victor Mac" && open "/Applications/Victor Mac.app"`.
 
 ## Risks and open questions
 

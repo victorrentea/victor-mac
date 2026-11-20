@@ -4,7 +4,7 @@ import XCTest
 final class WhisperProcessManagerTests: XCTestCase {
     func testWhisperScriptCandidatesIncludeConfiguredRoots() {
         let candidates = WhisperProcessManager.whisperScriptCandidates(
-            binaryDir: "/Applications/Victor Addons.app/Contents/MacOS",
+            binaryDir: "/Applications/Victor Mac.app/Contents/MacOS",
             envRoot: "/tmp/repo",
             homeDirectory: "/Users/victor",
             cwd: "/"

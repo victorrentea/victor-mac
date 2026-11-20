@@ -1,6 +1,6 @@
 ---
 name: add-training-video
-description: Download a YouTube video for offline fullscreen playback in Victor Addons and register it on the tablet's video page. Use when Victor gives a YouTube URL plus a start time (the second playback should begin from) to add to the training video snippets.
+description: Download a YouTube video for offline fullscreen playback in Victor Mac and register it on the tablet's video page. Use when Victor gives a YouTube URL plus a start time (the second playback should begin from) to add to the training video snippets.
 ---
 
 # add-training-video

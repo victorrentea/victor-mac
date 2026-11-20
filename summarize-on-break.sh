@@ -1,7 +1,7 @@
 #!/bin/bash
 # summarize-on-break.sh
 #
-# Triggered by the ☕️ Break menu of "Victor Addons" whenever a break of >= 5
+# Triggered by the ☕️ Break menu of "Victor Mac" whenever a break of >= 5
 # minutes starts (see BreakSummaryLauncher.swift). While Victor is on break, an
 # unattended `claude` instance advances the training-summary DELTA: it reads
 # only the new transcript since the last watermark and appends the new

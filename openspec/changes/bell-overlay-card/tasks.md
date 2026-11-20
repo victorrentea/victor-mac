@@ -37,7 +37,7 @@
 - [ ] 7.2 Manual: `GET /test/bell?name=Ana%20Pop` → confirm the card reads `🔔 Ana Pop is calling you` on the right-hand external screen (never the projected retina), plays the sound, persists, and hover-dismisses.
 - [ ] 7.3 Manual: send `{"type":"bell_ring","caller":"Dan"}` via `wscat`/`websocat` to `ws://127.0.0.1:8765` → confirm the card + sound end-to-end.
 - [ ] 7.4 Manual: fire two bells quickly → confirm both callers are represented (stacking).
-- [ ] 7.5 After changes: push to master, `./build-app.sh`, then restart (`pkill -f "Victor Addons"; open "/Applications/Victor Addons.app"`), per repo convention.
+- [ ] 7.5 After changes: push to master, `./build-app.sh`, then restart (`pkill -f "Victor Mac"; open "/Applications/Victor Mac.app"`), per repo convention.
 
 <!-- Manual verification tasks (7.2–7.5) require building and running the app. -->
 

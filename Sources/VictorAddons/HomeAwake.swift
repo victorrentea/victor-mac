@@ -100,7 +100,7 @@ final class HomeAwake: NSObject, CWEventDelegate {
         // docs send you to and it mangles non-ASCII into "?" in this column, so
         // an em-dash here would make the one line that proves the feature look
         // corrupted. Measured 13 Sep 2026.
-        name: "Victor Addons - home Wi-Fi, screen must not idle-lock",
+        name: "Victor Mac - home Wi-Fi, screen must not idle-lock",
         logPrefix: "🏠")
     private var timer: DispatchSourceTimer?
     /// Only for logging: a transition is worth a line, sixty restatements an

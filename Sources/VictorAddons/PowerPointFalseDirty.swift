@@ -10,7 +10,7 @@ import Foundation
 /// nobody touched, and AutoSave rewrites it a minute later.
 ///
 /// So: a deck unsaved in the very first sample that shows it, in a PowerPoint that launched
-/// moments ago — and after this watcher did, so a restart of Victor Addons next to a deck
+/// moments ago — and after this watcher did, so a restart of Victor Mac next to a deck
 /// with real edits never qualifies. Pure, so it is unit-tested.
 struct PowerPointFalseDirtyPolicy {
     /// From PowerPoint's launch to the deck being on screen: a 16 MB deck takes ~10 s.

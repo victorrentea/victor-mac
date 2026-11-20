@@ -406,7 +406,7 @@ git commit -m "feat(icon): SF Symbol source badge and battery-pause icon"
 ```bash
 git push
 ./build-app.sh
-pkill -f "Victor Addons"; open "/Applications/Victor Addons.app"
+pkill -f "Victor Mac"; open "/Applications/Victor Mac.app"
 ```
 
 - [ ] **Step 2: Verify running state with source badge**

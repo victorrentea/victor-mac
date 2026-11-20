@@ -134,7 +134,7 @@ final class BreakTimerController {
     /// not stop. Silent (no `logPrefix`): this comes and goes with idleness
     /// during a break and a line each way would be noise.
     private let sleepAssertion = DisplaySleepAssertion(
-        name: "Victor Addons break timer fullscreen")
+        name: "Victor Mac break timer fullscreen")
 
     /// Seconds since the live transcript last grew. Wired by AppDelegate to the
     /// daily transcription file's mtime; the fullscreen break screen only appears

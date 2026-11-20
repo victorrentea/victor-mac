@@ -3,9 +3,12 @@
 macOS utilities for live training workshops, running on the trainer's Mac.
 Menu bar app, **💬 icon**.
 
-**Folder and repo are `victor-mac` since 2026-11-20** (were `victor-macos-addons`; GitHub
-redirects the old URL). The app itself is still **Victor Addons** — bundle, process name,
-LaunchAgent label `ro.victorrentea.macos-addons` and bundle id did not change.
+**Renamed on 2026-11-20**: folder and repo `victor-macos-addons` → `victor-mac` (GitHub
+redirects the old URL), and the app **Victor Addons → `/Applications/Victor Mac.app`**
+(process name `Victor Mac`). Deliberately **unchanged**: bundle id and LaunchAgent label
+`ro.victorrentea.macos-addons` (TCC grants hang on the bundle id + signature), the signing
+identity `Victor Addons Local Code Signing` (shared with Walkie Talkie and the other apps),
+the Swift target `VictorAddons` and `~/.victor-addons/`.
 
 **Since 2026-09 this is one of two apps.** Every desktop effect, the soundboard
 and the 🔥 whip were extracted into [`victor-effects`](https://github.com/victorrentea/victor-effects)
@@ -110,8 +113,8 @@ load-bearing, not commentary.
 
 ## Rules that apply everywhere
 
-- After any code change in this project, always: push to master (`git push`), run `./build-app.sh`, then restart the app (`pkill -f "Victor Addons"; open "/Applications/Victor Addons.app"`).
-- **A change to an effect, a sound or the whip belongs in `victor-effects`**, and its deploy line is the other app's: `pkill -f "Victor Effects"; open "/Applications/Victor Effects.app"`. `pkill -f "Victor Addons"` no longer touches the effects — which is the point of the split, and also the first thing to check when a restart "fixed nothing".
+- After any code change in this project, always: push to master (`git push`), run `./build-app.sh`, then restart the app (`pkill -f "Victor Mac"; open "/Applications/Victor Mac.app"`).
+- **A change to an effect, a sound or the whip belongs in `victor-effects`**, and its deploy line is the other app's: `pkill -f "Victor Effects"; open "/Applications/Victor Effects.app"`. `pkill -f "Victor Mac"` no longer touches the effects — which is the point of the split, and also the first thing to check when a restart "fixed nothing".
 - After any significant design, architecture, or deployment change, proactively offer to save the decision to memory for future conversations.
 - **Testing during a live workshop is fine — don't hold back.** Victor doesn't mind app restarts or transcription gaps mid-session. The only constraint: the **built-in retina display is what's projected to the room**, so do any *visual* testing (overlays, screenshots) on the **right-hand external screen** instead — never put test UI on the projected retina display. (Note: the ☕️ Break overlay's `defaultFrame()` always opens on the retina by design; drag it to the right monitor, or screenshot the right screen, when verifying during a session.)
 - When documenting a change, edit the matching `docs/*.md` zone file — this index only routes.

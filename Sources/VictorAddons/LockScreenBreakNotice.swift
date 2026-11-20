@@ -60,7 +60,7 @@ final class LockScreenBreakNotice {
     /// Held while locked, a break is on, and a foreign display is online.
     private let keepLit = DisplaySleepAssertion(
         // ASCII: `pmset -g assertions` turns anything else into "?".
-        name: "Victor Addons - break card on the lock screen, foreign display",
+        name: "Victor Mac - break card on the lock screen, foreign display",
         logPrefix: "☕🔒")
 
     /// Fed from `ScreenLockMonitor.onChange` (main thread).
