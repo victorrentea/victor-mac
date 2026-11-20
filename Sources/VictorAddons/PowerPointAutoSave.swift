@@ -2,11 +2,12 @@ import CoreGraphics
 import Foundation
 
 /// 💾 Decides when an edited deck gets a real save. Pure, so the rules are unit-tested.
-/// A deck that stays unsaved for `dirtySeconds` is saved at the first moment Victor's hands
+/// A deck that stays unsaved for `dirtySeconds` (3 min since 2026-11-20: every save now also
+/// makes the training-assistant daemon print the changed slides) is saved at the first moment Victor's hands
 /// have been off the mouse and keyboard for `idleSeconds`, so a save never lands mid-word,
 /// and never during a slide show.
 struct PowerPointAutoSavePolicy {
-    var dirtySeconds: TimeInterval = 60
+    var dirtySeconds: TimeInterval = 180
     var idleSeconds: TimeInterval = 3
     private var dirtyPath: String?
     private var dirtySince: Date?
@@ -73,7 +74,55 @@ enum PowerPointDeck {
         end tell
         return "not open"
         """
+        ScriptedSaveLog.started(path)
         let r = AppleScriptRunner.runDetailed(script, timeout: 30)
+        ScriptedSaveLog.finished(path)
         overlayInfo("\(reason): save \(URL(fileURLWithPath: path).lastPathComponent) → \(r.output ?? r.error ?? "?")")
+    }
+}
+
+/// 🖨 Which saves were made by this app (AutoSave, SlidesSeen) rather than by Victor's ⌘S, in
+/// `~/.victor-addons/powerpoint-scripted-saves.json`: `{path: {"started": epoch, "mtime": epoch?}}`.
+/// The training-assistant daemon prints the changed slides in PowerPoint after every save, and
+/// that print shows a progress bar; after a scripted save it waits until PowerPoint is in the
+/// background (Victor, 2026-11-20). `mtime` is the file's after the save; while it is missing
+/// a save is under way, so a daemon that sees the new mtime first still reads it as scripted.
+enum ScriptedSaveLog {
+    static var fileURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".victor-addons", isDirectory: true)
+        .appendingPathComponent("powerpoint-scripted-saves.json")
+    private static let lock = NSLock()
+
+    static func started(_ path: String, at now: Date = Date()) {
+        update(path, ["started": now.timeIntervalSince1970])
+    }
+
+    static func finished(_ path: String, at now: Date = Date()) {
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date)
+        var entry: [String: Any] = ["started": (read()[path]?["started"] as? Double) ?? now.timeIntervalSince1970]
+        if let mtime { entry["mtime"] = mtime.timeIntervalSince1970 } else { entry["mtime"] = now.timeIntervalSince1970 }
+        update(path, entry)
+    }
+
+    static func read() -> [String: [String: Any]] {
+        guard let data = try? Data(contentsOf: fileURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] else { return [:] }
+        return json
+    }
+
+    private static func update(_ path: String, _ entry: [String: Any]) {
+        lock.lock(); defer { lock.unlock() }
+        var all = read()
+        all[path] = entry
+        // A day is plenty: the daemon looks at a save within seconds of it.
+        let cutoff = Date().timeIntervalSince1970 - 86400
+        all = all.filter { (($0.value["started"] as? Double) ?? 0) > cutoff }
+        do {
+            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let data = try JSONSerialization.data(withJSONObject: all, options: [.sortedKeys, .withoutEscapingSlashes])
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            overlayError("ScriptedSaveLog: could not write \(fileURL.path): \(error.localizedDescription)")
+        }
     }
 }

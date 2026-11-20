@@ -11,26 +11,26 @@ final class PowerPointAutoSavePolicyTests: XCTestCase {
                          slideID: 256, presenting: presenting, frontmost: true, saved: saved)
     }
 
-    func testSavesAfterAMinuteUnsaved() {
+    func testSavesAfterThreeMinutesUnsaved() {
         var p = PowerPointAutoSavePolicy()
         XCTAssertNil(p.consume(s(0), idle: 10))
-        XCTAssertNil(p.consume(s(58), idle: 10))
-        XCTAssertEqual(p.consume(s(60), idle: 10), deck)
+        XCTAssertNil(p.consume(s(178), idle: 10))
+        XCTAssertEqual(p.consume(s(180), idle: 10), deck)
     }
 
     func testWaitsForAPauseInTheHands() {
         var p = PowerPointAutoSavePolicy()
         _ = p.consume(s(0), idle: 10)
-        XCTAssertNil(p.consume(s(70), idle: 0.5))
-        XCTAssertNil(p.consume(s(72), idle: 2.9))
-        XCTAssertEqual(p.consume(s(74), idle: 3), deck)
+        XCTAssertNil(p.consume(s(190), idle: 0.5))
+        XCTAssertNil(p.consume(s(192), idle: 2.9))
+        XCTAssertEqual(p.consume(s(194), idle: 3), deck)
     }
 
     func testNeverDuringASlideShowThenRightAfterIt() {
         var p = PowerPointAutoSavePolicy()
         _ = p.consume(s(0), idle: 10)
-        XCTAssertNil(p.consume(s(120, presenting: true), idle: 10))
-        XCTAssertEqual(p.consume(s(122), idle: 10), deck)
+        XCTAssertNil(p.consume(s(240, presenting: true), idle: 10))
+        XCTAssertEqual(p.consume(s(242), idle: 10), deck)
     }
 
     func testADeckWithNoFileIsNeverSaved() {
@@ -55,22 +55,42 @@ final class PowerPointAutoSavePolicyTests: XCTestCase {
         _ = p.consume(s(0), idle: 10)
         _ = p.consume(s(50, saved: true), idle: 10)
         XCTAssertNil(p.consume(s(52), idle: 10))
-        XCTAssertNil(p.consume(s(100), idle: 10))
-        XCTAssertEqual(p.consume(s(112), idle: 10), deck)
+        XCTAssertNil(p.consume(s(220), idle: 10))
+        XCTAssertEqual(p.consume(s(232), idle: 10), deck)
     }
 
     func testSwitchingDeckRestartsTheClock() {
         var p = PowerPointAutoSavePolicy()
         _ = p.consume(s(0), idle: 10)
         XCTAssertNil(p.consume(s(70, path: "/d/b.pptx"), idle: 10))
-        XCTAssertEqual(p.consume(s(130, path: "/d/b.pptx"), idle: 10), "/d/b.pptx")
+        XCTAssertNil(p.consume(s(240, path: "/d/b.pptx"), idle: 10))
+        XCTAssertEqual(p.consume(s(250, path: "/d/b.pptx"), idle: 10), "/d/b.pptx")
     }
 
-    func testARefusedSaveIsRetriedAFullMinuteLater() {
+    func testARefusedSaveIsRetriedAFullPeriodLater() {
         var p = PowerPointAutoSavePolicy()
         _ = p.consume(s(0), idle: 10)
-        XCTAssertEqual(p.consume(s(60), idle: 10), deck)
-        XCTAssertNil(p.consume(s(62), idle: 10))
-        XCTAssertEqual(p.consume(s(120), idle: 10), deck)
+        XCTAssertEqual(p.consume(s(180), idle: 10), deck)
+        XCTAssertNil(p.consume(s(182), idle: 10))
+        XCTAssertEqual(p.consume(s(360), idle: 10), deck)
+    }
+
+    /// The daemon reads this file to tell AutoSave from ⌘S: a save under way has no mtime yet.
+    func testScriptedSaveLogRecordsStartThenTheFilesMtime() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let saved = ScriptedSaveLog.fileURL
+        ScriptedSaveLog.fileURL = dir.appendingPathComponent("saves.json")
+        defer { ScriptedSaveLog.fileURL = saved; try? FileManager.default.removeItem(at: dir) }
+        let deckFile = dir.appendingPathComponent("a.pptx")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: deckFile)
+        let mtime = Date(timeIntervalSince1970: 1_800_000_000)
+        try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: deckFile.path)
+
+        ScriptedSaveLog.started(deckFile.path)
+        XCTAssertNotNil(ScriptedSaveLog.read()[deckFile.path]?["started"])
+        XCTAssertNil(ScriptedSaveLog.read()[deckFile.path]?["mtime"])
+        ScriptedSaveLog.finished(deckFile.path)
+        XCTAssertEqual(ScriptedSaveLog.read()[deckFile.path]?["mtime"] as? Double, 1_800_000_000)
     }
 }

@@ -120,10 +120,16 @@ file, whole minutes at best. So this app does a real save.
 
 - **Rides on the same 2 s probe**, which already reads `saved` of the active presentation. The
   rules are in the pure `PowerPointAutoSavePolicy` (`PowerPointAutoSavePolicyTests`).
-- **When:** unsaved for 60 s **and** no mouse or keyboard input for 3 s, so a save never lands
-  mid-word. Victor picked the minute over 20 s on 2026-11-04.
+- **When:** unsaved for **3 min** **and** no mouse or keyboard input for 3 s, so a save never lands
+  mid-word. Victor picked the minute over 20 s on 2026-11-04, then 3 min on 2026-11-20: every save
+  now also makes the training-assistant daemon print the changed slides in PowerPoint, and that
+  print shows a progress bar.
+- **Scripted saves are noted** (`ScriptedSaveLog`, `~/.victor-addons/powerpoint-scripted-saves.json`,
+  `{path: {started, mtime}}`): every save this app makes, AutoSave's and SlidesSeen's, so the daemon
+  can tell them from Victor's ⌘S. After his ⌘S it prints at once; after one of these it waits until
+  PowerPoint is no longer in front (`training-assistant/daemon/slides/save_origin.py`).
 - **Never:** during a slide show (saved right after it), or for a deck with no file yet.
-- **A refused save** (Drive does that sometimes) is retried a full minute later, and only shows in
+- **A refused save** (Drive does that sometimes) is retried a full period (3 min) later, and only shows in
   the log (`/tmp/victor-mac.log`), as `AutoSave: save <deck> → refused`.
 - Only the **active** presentation is watched; a second edited deck waits until it is in front.
 - **Measured on a 182-slide, 14 MB deck in `~/My Drive` (2026-11-04):** saved 63 s after the edit,
