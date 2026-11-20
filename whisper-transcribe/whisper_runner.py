@@ -259,6 +259,23 @@ _SPEAKER_ID_ON = _SPEAKER_ID in {"1", "true", "yes", "on"}  # allow-list, as abo
 # means the loopback produced real words within this window; onsite it stays
 # silent, and the mic falls back to the voiceprint alone.
 _CALL_WINDOW_SEC = float(os.environ.get("WHISPER_CALL_WINDOW_SECONDS", "180"))
+# The direct signal, preferred (2026-11-20): the app's `MeetingDetector` touches
+# this file every 3 s while Zoom/Teams/Webex or a browser is capturing the mic.
+# Without it a monologue longer than the window above fell back to the
+# voiceprint mid-call. Trusted only while fresh, so a crashed app cannot leave
+# a call "on" forever. The loopback window stays as the fallback.
+_IN_CALL_MARKER = Path(
+    os.environ.get("WHISPER_IN_CALL_MARKER", str(Path.home() / ".victor-addons" / "in-call"))
+)
+_IN_CALL_MARKER_FRESH_SEC = 15.0
+
+
+def _meeting_marker_live(now: float | None = None) -> bool:
+    try:
+        age = (time.time() if now is None else now) - _IN_CALL_MARKER.stat().st_mtime
+    except OSError:
+        return False
+    return age < _IN_CALL_MARKER_FRESH_SEC
 # How many of whisper's own segments inside one chunk get a verdict. The cap is
 # not about cost — it is about a decode that has gone wrong: a hallucinating
 # chunk can come back with fifty zero-length segments, and scoring a list like
@@ -2080,7 +2097,10 @@ class WhisperTranscriptionRunner:
 
             if any(not _is_garbage(r[2]) and not looks_like_noise(r[2]) for r in rows):
                 self._last_call_speech = time.time()
-        in_call = time.time() - self._last_call_speech < _CALL_WINDOW_SEC
+        in_call = (
+            time.time() - self._last_call_speech < _CALL_WINDOW_SEC
+            or _meeting_marker_live()
+        )
 
         for start, end, seg_text, verdict in rows:
             try:

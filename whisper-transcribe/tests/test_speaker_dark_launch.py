@@ -467,6 +467,25 @@ class TestTheChannelBeatsTheVoiceprint:
         r._on_segment("Victor", "ro", "hmm ceva", "🎤", _Verdict(None, 0.3, "abstain"))
         assert self._lines(tmp_path)[-1].endswith("] hmm ceva")
 
+    def test_a_fresh_meeting_marker_makes_a_monologue_victor(self, tmp_path, monkeypatch):
+        marker = tmp_path / "in-call"
+        marker.touch()
+        monkeypatch.setattr(wr, "_IN_CALL_MARKER", marker)
+        r = _runner(tmp_path)
+        r._on_segment("Victor", "ro", "și acum vă arăt", "🎤", _Verdict(None, 0.3, "abstain"))
+        assert self._lines(tmp_path)[-1].endswith("] 🎙️ și acum vă arăt")
+
+    def test_a_stale_meeting_marker_is_ignored(self, tmp_path, monkeypatch):
+        import os, time
+        marker = tmp_path / "in-call"
+        marker.touch()
+        old = time.time() - 60
+        os.utime(marker, (old, old))
+        monkeypatch.setattr(wr, "_IN_CALL_MARKER", marker)
+        r = _runner(tmp_path)
+        r._on_segment("Victor", "ro", "hmm ceva", "🎤", _Verdict(None, 0.3, "abstain"))
+        assert self._lines(tmp_path)[-1].endswith("] hmm ceva")
+
     def test_noise_on_the_loopback_gets_no_mark_and_does_not_start_a_call(self, tmp_path):
         r = _runner(tmp_path)
         r._on_segment("Audience", "ro", "Spira za bilata pu元mi 수리입니다", "", _Verdict("Audience", 0.1))

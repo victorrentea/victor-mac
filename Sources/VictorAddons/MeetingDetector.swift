@@ -59,9 +59,27 @@ final class MeetingDetector {
 
     deinit { timer?.cancel() }
 
+    /// 🗣️ Whisper's "a call is live" signal (2026-11-20). Touched on every 3 s
+    /// tick while a meeting holds the mic, deleted otherwise; whisper trusts it
+    /// only while its mtime is fresh, so a crash mid-call cannot leave it on.
+    static let inCallMarker = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".victor-addons/in-call")
+
+    private static func writeInCallMarker(_ active: Bool) {
+        let path = inCallMarker.path
+        if active {
+            if !FileManager.default.createFile(atPath: path, contents: nil) {
+                overlayInfo("MeetingDetector: could not write \(path)")
+            }
+        } else if FileManager.default.fileExists(atPath: path) {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+    }
+
     private func tick() {
         let captor = Self.meetingCaptor()
         let active = captor != nil
+        Self.writeInCallMarker(active)
         guard active != isMeetingActive else { return }
         isMeetingActive = active
         overlayInfo("MeetingDetector: meeting \(active ? "started (\(captor ?? "?"))" : "ended")")
