@@ -116,6 +116,10 @@ class EventTapManager {
     /// the screen, its light searching the bottom strip or following the
     /// pointer below it, the screen dark around it (drawn by Victor Effects).
     var onShowEye: (() -> Void)?
+    /// ⌘⌃6 — ⚡ unlimited power: two old hands rise from the bottom of the
+    /// screen and loose blue lightning until it fills the screen, then sink
+    /// again, over a transparent background (drawn by Victor Effects).
+    var onShowPower: (() -> Void)?
     /// ⌘⌃I — 🐼 the panda, the elephant's twin walking in from the RIGHT edge
     /// into the right half of the screen. It spent its first morning on ⌃⌥I
     /// (2026-10-01); it moved next to the elephant so both animals live on
@@ -241,6 +245,7 @@ private let VK_SECTION: CGKeyCode = 0x0A  // kVK_ISO_Section, the § key top-lef
     private let VK_9: CGKeyCode = 0x19
     private let VK_8: CGKeyCode = 0x1C
     private let VK_7: CGKeyCode = 0x1A
+    private let VK_6: CGKeyCode = 0x16
 private let VK_F: CGKeyCode = 0x03
     private let VK_X: CGKeyCode = 0x07
     private let VK_W: CGKeyCode = 0x0D
@@ -1433,6 +1438,12 @@ private let VK_I: CGKeyCode = 0x22
         // Cmd+Ctrl+7 → 👁️ the Eye of the Tower searches the screen (suppress).
         if keyCode == VK_7 && hasCmd && hasCtrl && !hasOpt {
             DispatchQueue.global().async { [weak self] in self?.onShowEye?() }
+            return nil
+        }
+
+        // Cmd+Ctrl+6 → ⚡ two hands loose blue lightning over the screen (suppress).
+        if keyCode == VK_6 && hasCmd && hasCtrl && !hasOpt {
+            DispatchQueue.global().async { [weak self] in self?.onShowPower?() }
             return nil
         }
 

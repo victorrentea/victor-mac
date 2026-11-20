@@ -71,6 +71,9 @@ enum CommandControlShortcuts {
                          // transparent background (2026-11-19, Victor's Gemini clip).
         26: "eye",       // 7 — 👁️ the Eye of the Tower: its light searches the bottom of
                          // the screen, or follows the pointer below it (2026-11-20).
+        22: "power",     // 6 — ⚡ two old hands rise from the bottom and loose blue
+                         // lightning until it fills the screen, then sink again
+                         // (2026-11-20, Victor's Gemini clip).
         34: "xi",        // I — 🐼 the panda, the elephant's twin from the right
                          // half of the screen, on the key next to it. Named
                          // after the man like "trump", for the same reason.
