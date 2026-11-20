@@ -184,7 +184,7 @@ final class ChromeBridge {
     /// Ask the extension to reload itself — `chrome.runtime.reload()`, which
     /// re-reads an unpacked extension from disk.
     ///
-    /// This is the way a change to `chrome-extension/` gets applied. Nothing
+    /// This is the way a change to `victor-chrome/victor-addons/` gets applied. Nothing
     /// outside the browser can do it: `chrome://extensions` is off limits to
     /// extensions (including the automation one), and codex refuses browser
     /// control outright, so the click was landing on Victor. The extension is

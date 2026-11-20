@@ -14,7 +14,7 @@ AppDelegate.requestFeedbackForm()      ← session name from the session folder
    ▼  ChromeBridge, ws://127.0.0.1:8766
    {"type":"publish-feedback-form","session":"AI@MassMutual"}
    ▼
-chrome-extension/feedback-form.js      ← does the whole dance in Victor's Chrome
+victor-chrome/victor-addons/feedback-form.js ← does the whole dance in Victor's Chrome
    ▼  GET 127.0.0.1:55123/feedback-form/published?url=…&title=…
 AppDelegate.feedbackFormPublished()    → clipboard + 🔳 banner + session notes
    ▼  POST 127.0.0.1:1234/feedback-form
@@ -114,7 +114,7 @@ The Angular DOM notes — which selectors survive a rebuild, why text matching
 fails on the action buttons, why the first row is not the newest form, why a
 fresh copy arrives selected and turns the list compact, why the share URL is
 not in an input — live in the header comment of
-[`chrome-extension/feedback-form.js`](../chrome-extension/feedback-form.js),
+`~/workspace/victor-chrome/victor-addons/feedback-form.js` (repo `victor-chrome`),
 next to the code that depends on them.
 
 **2026-10-16: the site rebuilt its forms list** (grouped by week, sorted by
@@ -128,7 +128,7 @@ buttons hid that; the new UI's re-rendered menus turned it into a second Copy.
 
 ## Testing
 
-The extension must be reloaded after any change to `chrome-extension/` — the
+The extension must be reloaded after any change to `victor-chrome/victor-addons/` — the
 Mac-side rebuild does not touch it: `curl -s 127.0.0.1:55123/chrome/extension/reload`
 (the extension reloads itself; `chrome://extensions` is the manual fallback). Watch it work in
 the service worker console (`chrome://extensions` → *Victor Chrome Addons* →

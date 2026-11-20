@@ -435,7 +435,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             DispatchQueue.main.async { self?.openUrlInChrome(url, target: .screenUnderMouse) }
         }
         // `curl localhost:55123/chrome/extension/reload` — how an edit under
-        // `chrome-extension/` reaches the browser. `build-app.sh` calls it, so
+        // `victor-chrome/victor-addons/` reaches the browser. `build-app.sh` calls it, so
         // the extension follows the app the way the app follows the source.
         tabletServer?.onChromeExtensionReload = { [weak self] in
             self?.chromeBridge?.reloadExtension() ?? false

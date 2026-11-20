@@ -35,7 +35,7 @@ class TabletHttpServer {
     /// windows are.
     case testChromeWindows
     /// Tell the Chrome extension to reload itself, so an edit under
-    /// `chrome-extension/` takes effect without anyone opening
+    /// `victor-chrome/victor-addons/` takes effect without anyone opening
     /// `chrome://extensions` — a page no extension, and no agent, can click.
     case chromeExtensionReload
         case testTranscriptionStart
