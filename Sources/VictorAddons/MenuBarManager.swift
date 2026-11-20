@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 20, 21:48"
+    static let BUILD_TIME = "Nov 20, 22:12"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -1555,7 +1555,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     /// The 🔋 row's title. Like the 🔴 row, the state is in the words.
     enum BatteryRecordingMenu {
         static let stop = "⏹ Stop recording on battery (until AC)"
-        static let start = "👂 Record on battery"
+        static let start = "👂 Record audio to transcribe later"
     }
 
     @objc private func toggleBatteryRecordingAction() {
