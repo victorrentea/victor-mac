@@ -39,8 +39,8 @@ When the trainer taps the `fail.mp3` button on the Android tablet (sfx index 19,
 ## Files Touched
 
 - `victor-android/app/src/main/java/ro/victorrentea/helloworld/MainActivity.kt` (1 line added).
-- `victor-macos-addons/Sources/VictorAddons/AppDelegate.swift` (1 case added).
-- `victor-macos-addons/Sources/VictorAddons/EmojiAnimator.swift` (~30 lines: new method).
+- `victor-mac/Sources/VictorAddons/AppDelegate.swift` (1 case added).
+- `victor-mac/Sources/VictorAddons/EmojiAnimator.swift` (~30 lines: new method).
 
 ## Out of Scope
 

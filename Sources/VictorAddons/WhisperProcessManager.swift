@@ -326,7 +326,7 @@ class WhisperProcessManager {
         if !envRoot.isEmpty {
             candidates.append("\(envRoot)/whisper-transcribe/whisper_runner.py")
         }
-        candidates.append("\(homeDirectory)/workspace/victor-macos-addons/whisper-transcribe/whisper_runner.py")
+        candidates.append("\(homeDirectory)/workspace/victor-mac/whisper-transcribe/whisper_runner.py")
         candidates.append("\(cwd)/whisper-transcribe/whisper_runner.py")
         return candidates
     }

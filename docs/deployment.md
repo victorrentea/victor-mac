@@ -28,7 +28,7 @@
 - `/tmp/VictorAddons.pid` lock with `proc-name` verification before SIGTERM (avoids killing unrelated PIDs after a stale PID file from a hard crash).
 - SIGTERM is delivered via `DispatchSource.makeSignalSource` (not raw `signal()`), so the handler can call `AppDelegate.tearDownForReplacement()` which `SIGKILL`s the Whisper subprocess synchronously. Previous design left whisper orphan until its parent-watch sentinel noticed (up to 2s).
 - New-instance grace timeout extended from 200ms to ~1s before falling back to SIGKILL on the previous instance.
-- On launch, if stderr is not already a regular file (i.e. not piped by `start.sh`), `main.swift` redirects stdout/stderr to `/tmp/victor-macos-addons.log` itself — so launching via `open` (Spotlight, Login Items) logs to the same file as a LaunchAgent boot.
+- On launch, if stderr is not already a regular file (i.e. not piped by `start.sh`), `main.swift` redirects stdout/stderr to `/tmp/victor-mac.log` itself — so launching via `open` (Spotlight, Login Items) logs to the same file as a LaunchAgent boot.
 - Result: `pkill -f "Victor Addons"; open "/Applications/Victor Addons.app"` and `launchctl kickstart -k gui/$UID/ro.victorrentea.macos-addons` are now behavioral equivalents.
 
 **Operational note (2026-07): clicking the app again replaces it (`AppRelaunch`).** The hand-over above was always correct — and almost never ran. LaunchServices treats `open` of an already-running bundle as an **activation, not a launch**: no second process starts, so nothing ever writes a new pid, and clicking "Victor Addons" in Spotlight while it was wedged did *precisely nothing*. The only way out was `pkill` in a terminal. Two entry points now close that from the other side, both funnelling into `AppRelaunch.relaunch`:

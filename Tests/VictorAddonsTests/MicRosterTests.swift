@@ -21,7 +21,7 @@ final class MicRosterTests: XCTestCase {
         URL(fileURLWithPath: #filePath)            // …/Tests/VictorAddonsTests/MicRosterTests.swift
             .deletingLastPathComponent()           // …/Tests/VictorAddonsTests
             .deletingLastPathComponent()           // …/Tests
-            .deletingLastPathComponent()           // …/victor-macos-addons
+            .deletingLastPathComponent()           // …/victor-mac
     }
 
     private func source(_ relativePath: String, in root: URL) throws -> String {

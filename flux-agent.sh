@@ -65,7 +65,7 @@ TRUSTED_SENDER="victorrentea@gmail.com"   # reply destination — NEVER from the
 API="https://api.agentmail.to/v0"
 # Overridable only so test-flux-interactive.sh can run the real script without
 # appending to the real day log or dropping test sessions in flux-sessions/.
-OUTPUT_DIR="${FLUX_AGENT_OUTPUT_DIR:-/Users/victorrentea/workspace/victor-macos-addons/addons-output}"
+OUTPUT_DIR="${FLUX_AGENT_OUTPUT_DIR:-/Users/victorrentea/workspace/victor-mac/addons-output}"
 # Where claude runs. Victor's mails are feature requests across his repos, so the
 # workspace root is the useful default; override with FLUX_AGENT_CWD.
 WORKDIR="${FLUX_AGENT_CWD:-$HOME/workspace}"

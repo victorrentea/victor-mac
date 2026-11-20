@@ -37,7 +37,7 @@ enum BreakSummaryLauncher {
             "\(binaryDir)/summarize-on-break.sh",
         ]
         if !envRoot.isEmpty { candidates.append("\(envRoot)/summarize-on-break.sh") }
-        candidates.append("\(home)/workspace/victor-macos-addons/summarize-on-break.sh")
+        candidates.append("\(home)/workspace/victor-mac/summarize-on-break.sh")
         candidates.append("\(cwd)/summarize-on-break.sh")
         for c in candidates {
             let resolved = URL(fileURLWithPath: c).standardized.path

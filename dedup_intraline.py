@@ -7,7 +7,7 @@ and top word covers > 50% of all words → hallucination.
 """
 import re
 
-FILE = "/Users/victorrentea/workspace/victor-macos-addons/addons-output/2026-04-07-transcription.txt"
+FILE = "/Users/victorrentea/workspace/victor-mac/addons-output/2026-04-07-transcription.txt"
 
 LINE_RE = re.compile(r'^\[\d+:\d+\] .+?: (.+)$')
 

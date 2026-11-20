@@ -165,7 +165,7 @@ enum FluxAgentLauncher {
             "\(binaryDir)/flux-agent.sh",
         ]
         if !envRoot.isEmpty { candidates.append("\(envRoot)/flux-agent.sh") }
-        candidates.append("\(home)/workspace/victor-macos-addons/flux-agent.sh")
+        candidates.append("\(home)/workspace/victor-mac/flux-agent.sh")
         candidates.append("\(cwd)/flux-agent.sh")
         for c in candidates {
             let resolved = URL(fileURLWithPath: c).standardized.path

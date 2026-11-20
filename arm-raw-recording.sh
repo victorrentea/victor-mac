@@ -13,7 +13,7 @@
 # behaviour, not a gap: the corpus is worth having only when the room is.
 set -u
 
-OUT="/Users/victorrentea/workspace/victor-macos-addons/addons-output"
+OUT="/Users/victorrentea/workspace/victor-mac/addons-output"
 FLAG="$OUT/.record-raw-audio"
 LABEL="ro.victorrentea.arm-raw-recording"
 

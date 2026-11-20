@@ -58,7 +58,7 @@ let retryTimer = null;
 
 /// Chrome collects console output from a service worker, but only DevTools
 /// opened by hand on that worker will show it. Mirroring it to the Mac puts it
-/// in `/tmp/victor-macos-addons.log` next to the app's own lines, in the order
+/// in `/tmp/victor-mac.log` next to the app's own lines, in the order
 /// they happened — readable from a terminal, and from an agent.
 function log(...args) {
   console.log(...args);

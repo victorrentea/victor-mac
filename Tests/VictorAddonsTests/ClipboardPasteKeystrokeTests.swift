@@ -9,7 +9,7 @@ final class ClipboardPasteKeystrokeTests: XCTestCase {
     private let terminal = "com.apple.Terminal"
     /// A real Claude Code window title: the spinner, the working directory, and
     /// what the session is about.
-    private let claudeTitle = "✳ victor-macos-addons — Clipboard bezel paste key"
+    private let claudeTitle = "✳ victor-mac — Clipboard bezel paste key"
     /// What a Terminal window with no session in it is called here.
     private let shellTitle = "~/workspace"
 

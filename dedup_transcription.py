@@ -8,7 +8,7 @@ import time
 import os
 import sys
 
-FILE = "/Users/victorrentea/workspace/victor-macos-addons/addons-output/2026-04-07-transcription.txt"
+FILE = "/Users/victorrentea/workspace/victor-mac/addons-output/2026-04-07-transcription.txt"
 TARGET_REMOVALS = 999999
 
 total_removed = 0

@@ -39,7 +39,7 @@ enum VideoLibrary {
             "\(binaryDir)/videos",
         ]
         if !envRoot.isEmpty { candidates.append("\(envRoot)/videos") }
-        candidates.append("\(home)/workspace/victor-macos-addons/videos")
+        candidates.append("\(home)/workspace/victor-mac/videos")
         candidates.append("\(cwd)/videos")
         for c in candidates {
             let resolved = URL(fileURLWithPath: c).standardized.path
@@ -49,7 +49,7 @@ enum VideoLibrary {
             }
         }
         // Fall back to the canonical path even if it doesn't exist yet.
-        return URL(fileURLWithPath: "\(home)/workspace/victor-macos-addons/videos").standardized.path
+        return URL(fileURLWithPath: "\(home)/workspace/victor-mac/videos").standardized.path
     }
 
     static func manifestPath() -> String { "\(videosDir())/videos.json" }

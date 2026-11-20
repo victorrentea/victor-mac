@@ -3,7 +3,7 @@
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-LOG=/tmp/victor-macos-addons.log
+LOG=/tmp/victor-mac.log
 echo "$(date '+%H:%M:%S') Starting VictorAddons..." >> "$LOG"
 
 BUNDLE_BIN="/Applications/Victor Addons.app/Contents/MacOS/Victor Addons"

@@ -3,7 +3,7 @@
 
     python3 enroll_voiceprint.py \
         --wavs ~/.cache/victor-speaker-corpus/enroll_victor \
-        --out  ~/workspace/victor-macos-addons/addons-output \
+        --out  ~/workspace/victor-mac/addons-output \
         --victor-at 0.60 --audience-below 0.35
 
 Run once, then again whenever the microphone changes enough to matter — a
@@ -13,7 +13,7 @@ voiceprint is a measurement of a signal path as much as of a voice.
 held-out set recorded *months* after the enrolment audio, because that is the
 condition this actually runs in. This script refuses to invent them.
 
-The result never goes in the repo: `victor-macos-addons` is public, and a
+The result never goes in the repo: `victor-mac` is public, and a
 speaker-verification template is exactly the artefact that defeats speaker
 verification. `--out` is the gitignored transcript folder.
 """

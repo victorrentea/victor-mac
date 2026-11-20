@@ -12,7 +12,7 @@
          One HTTPS GET plus a POST per dead session — cheap. -->
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/victorrentea/workspace/victor-macos-addons/cc-session-reap.sh</string>
+        <string>/Users/victorrentea/workspace/victor-mac/cc-session-reap.sh</string>
     </array>
 
     <key>StartInterval</key>

@@ -182,7 +182,7 @@ class Voiceprint:
     be answerable from the file itself, months later, without finding the script
     that made it.
 
-    **It never goes in the repo.** `victor-macos-addons` is public, and a
+    **It never goes in the repo.** `victor-mac` is public, and a
     speaker-verification template is precisely the artefact that defeats
     speaker verification. It lives beside the transcripts, in the gitignored
     output folder.

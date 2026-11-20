@@ -59,7 +59,7 @@ Play a bell/chime on each bell via `SoundManager.shared.play("<bell>.mp3")` (a b
 Add `GET /test/bell` (and optionally `GET /test/bell?name=<n>`) to `TabletHttpServer`, wired in `AppDelegate` like `/test/group-photo`, to show a bell card with a sample name immediately — bypassing the need for a live daemon connection — so the card can be verified on the right-hand external screen during a session.
 
 ### D6: Shared `bell_ring` contract (documented identically in both repos)
-This is the single wire contract linking `victor-macos-addons` and `training-assistant`. It is written verbatim below and in the `attention-notifications` design in the training-assistant repo.
+This is the single wire contract linking `victor-mac` and `training-assistant`. It is written verbatim below and in the `attention-notifications` design in the training-assistant repo.
 
 ```
 Message:    bell_ring

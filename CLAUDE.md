@@ -3,6 +3,10 @@
 macOS utilities for live training workshops, running on the trainer's Mac.
 Menu bar app, **💬 icon**.
 
+**Folder and repo are `victor-mac` since 2026-11-20** (were `victor-macos-addons`; GitHub
+redirects the old URL). The app itself is still **Victor Addons** — bundle, process name,
+LaunchAgent label `ro.victorrentea.macos-addons` and bundle id did not change.
+
 **Since 2026-09 this is one of two apps.** Every desktop effect, the soundboard
 and the 🔥 whip were extracted into [`victor-effects`](https://github.com/victorrentea/victor-effects)
 (**🎆**, a separate public repo beside this one). This app keeps the training

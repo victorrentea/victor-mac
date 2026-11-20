@@ -11,7 +11,7 @@ final class WhisperProcessManagerTests: XCTestCase {
         )
 
         XCTAssertTrue(candidates.contains("/tmp/repo/whisper-transcribe/whisper_runner.py"))
-        XCTAssertTrue(candidates.contains("/Users/victor/workspace/victor-macos-addons/whisper-transcribe/whisper_runner.py"))
+        XCTAssertTrue(candidates.contains("/Users/victor/workspace/victor-mac/whisper-transcribe/whisper_runner.py"))
     }
 
     func testWhisperScriptCandidatesIncludeCwdFallback() {

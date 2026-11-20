@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 class PortKiller: NSObject {
-    static let portsFileURL = URL(fileURLWithPath: "/Users/victorrentea/workspace/victor-macos-addons/ports-to-kill.txt")
+    static let portsFileURL = URL(fileURLWithPath: "/Users/victorrentea/workspace/victor-mac/ports-to-kill.txt")
     private let portHistoryURL: URL
     private(set) var history: [Int]
 

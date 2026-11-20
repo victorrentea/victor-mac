@@ -271,7 +271,7 @@ final class ChromeBridge {
                     // A service worker's console is only readable by opening
                     // DevTools on it, by hand, in Chrome — which is exactly the
                     // kind of click this whole day was about removing. Mirrored
-                    // here, `tail /tmp/victor-macos-addons.log` shows both halves
+                    // here, `tail /tmp/victor-mac.log` shows both halves
                     // of the app interleaved, which is also the only way to see
                     // the order they happened in.
                     let text = msg["text"] as? String ?? ""

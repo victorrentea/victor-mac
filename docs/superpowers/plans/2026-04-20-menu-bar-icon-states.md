@@ -112,7 +112,7 @@ final class MenuBarIconTests: XCTestCase {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd /Users/victorrentea/workspace/victor-macos-addons
+cd /Users/victorrentea/workspace/victor-mac
 swift test --filter MenuBarIconTests 2>&1 | tail -20
 ```
 

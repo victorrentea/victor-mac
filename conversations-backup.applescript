@@ -3,7 +3,7 @@
 -- conversations-backup.sh and posts a notification only when something
 -- happened (a backup ran, or it failed). Built by install-conversations-backup.sh.
 on run
-	set backupScript to "/Users/victorrentea/workspace/victor-macos-addons/conversations-backup.sh"
+	set backupScript to "/Users/victorrentea/workspace/victor-mac/conversations-backup.sh"
 	try
 		set summary to do shell script "/bin/bash " & quoted form of backupScript
 		if summary is not "" then display notification summary with title "🗄️ Conversații salvate pe Vic"

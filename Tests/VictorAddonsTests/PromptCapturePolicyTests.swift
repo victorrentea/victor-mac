@@ -222,7 +222,7 @@ final class PromptCapturePolicyTests: XCTestCase {
     }
 
     func testAnyOtherFolderOrNoFolderStillAsks() {
-        XCTAssertFalse(PromptCapturePolicy.autoSends(cwd: "/Users/v/workspace/victor-macos-addons", home: "/Users/v"))
+        XCTAssertFalse(PromptCapturePolicy.autoSends(cwd: "/Users/v/workspace/victor-mac", home: "/Users/v"))
         XCTAssertFalse(PromptCapturePolicy.autoSends(cwd: "/Users/v/workspace", home: "/Users/v"))
         XCTAssertFalse(PromptCapturePolicy.autoSends(cwd: nil, home: "/Users/v"))
         XCTAssertFalse(PromptCapturePolicy.autoSends(cwd: "", home: "/Users/v"))

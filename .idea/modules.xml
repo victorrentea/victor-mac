@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/victor-macos-addons.iml" filepath="$PROJECT_DIR$/.idea/victor-macos-addons.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/victor-mac.iml" filepath="$PROJECT_DIR$/.idea/victor-mac.iml" />
     </modules>
   </component>
 </project>

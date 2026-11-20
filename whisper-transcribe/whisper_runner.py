@@ -2253,7 +2253,7 @@ if __name__ == "__main__":
     folder = Path(
         os.environ.get(
             "TRANSCRIPTION_FOLDER",
-            "/Users/victorrentea/workspace/victor-macos-addons/addons-output",
+            "/Users/victorrentea/workspace/victor-mac/addons-output",
         )
     )
     runner_ref: dict = {}

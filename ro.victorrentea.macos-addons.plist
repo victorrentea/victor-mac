@@ -7,13 +7,13 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/victorrentea/workspace/victor-macos-addons/start.sh</string>
+        <string>/Users/victorrentea/workspace/victor-mac/start.sh</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/victor-macos-addons.log</string>
+    <string>/tmp/victor-mac.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/victor-macos-addons.log</string>
+    <string>/tmp/victor-mac.log</string>
 </dict>
 </plist>

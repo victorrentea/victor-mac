@@ -57,7 +57,7 @@ final class AddonSounds {
         let home = NSHomeDirectory()
         var candidates = ["\(binaryDir)/../../../Sources/VictorAddons/Resources/sounds"]
         if !envRoot.isEmpty { candidates.append("\(envRoot)/Sources/VictorAddons/Resources/sounds") }
-        candidates.append("\(home)/workspace/victor-macos-addons/Sources/VictorAddons/Resources/sounds")
+        candidates.append("\(home)/workspace/victor-mac/Sources/VictorAddons/Resources/sounds")
         for c in candidates {
             let url = URL(fileURLWithPath: c).standardized
             if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {

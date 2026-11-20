@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install victor-macos-addons as a macOS login item (LaunchAgent)
+# Install victor-mac as a macOS login item (LaunchAgent)
 set -e
 
 PLIST_NAME="ro.victorrentea.macos-addons.plist"
@@ -19,5 +19,5 @@ ln -sf "$PLIST_SRC" "$PLIST_DST"
 launchctl unload "$PLIST_DST" 2>/dev/null || true
 launchctl load "$PLIST_DST"
 
-echo "✅ victor-macos-addons installed as login item"
-echo "   Logs: tail -f /tmp/victor-macos-addons.log"
+echo "✅ victor-mac installed as login item"
+echo "   Logs: tail -f /tmp/victor-mac.log"

@@ -77,7 +77,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var portKiller: PortKiller?
     private var whisperManager: WhisperProcessManager?
     private var transcriptionWatcher: TranscriptionWatcher?
-    private var transcriptionFolder: URL = URL(fileURLWithPath: "/Users/victorrentea/workspace/victor-macos-addons/addons-output")
+    private var transcriptionFolder: URL = URL(fileURLWithPath: "/Users/victorrentea/workspace/victor-mac/addons-output")
     private var joinLinkBanner: JoinLinkBanner?
     private var promptCaptureBanner: BottomLeftBanner?
     /// Fires the 16:45 / 17:15 "Start summarization?" offer (see SummaryReminder).
@@ -312,7 +312,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             if let env = ProcessInfo.processInfo.environment["TRANSCRIPTION_FOLDER"] {
                 return URL(fileURLWithPath: env)
             }
-            return URL(fileURLWithPath: "/Users/victorrentea/workspace/victor-macos-addons/addons-output")
+            return URL(fileURLWithPath: "/Users/victorrentea/workspace/victor-mac/addons-output")
         }()
 
         let wsServer = LocalWebSocketServer()

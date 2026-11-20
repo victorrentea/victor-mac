@@ -4,11 +4,11 @@ import Foundation
 
 // --- Uniform logging ---
 // When launched via `open` (Spotlight, Finder, Login Items, manual `open`),
-// stdout/stderr go to the unified system log and `/tmp/victor-macos-addons.log`
+// stdout/stderr go to the unified system log and `/tmp/victor-mac.log`
 // stops getting written. Detect that case and redirect ourselves, so launches
 // via start.sh AND launches via `open` behave identically log-wise.
 func redirectLogsIfNeeded() {
-    let logPath = "/tmp/victor-macos-addons.log"
+    let logPath = "/tmp/victor-mac.log"
     var st = stat()
     let isRegular = fstat(fileno(stderr), &st) == 0 && (st.st_mode & S_IFMT) == S_IFREG
     if isRegular { return }  // start.sh already redirected for us

@@ -17,7 +17,7 @@
 set -uo pipefail
 
 CLAUDE="$(command -v claude || echo "$HOME/.local/bin/claude")"
-OUTPUT_DIR="/Users/victorrentea/workspace/victor-macos-addons/addons-output"
+OUTPUT_DIR="/Users/victorrentea/workspace/victor-mac/addons-output"
 SESSIONS_DIR="/Users/victorrentea/My Drive/Cursuri/###sesiuni"
 LOCK="/tmp/training-summarizer-break.lock"
 SENTINEL="${1:-}"          # launcher-provided; written at the end (ok|fail)

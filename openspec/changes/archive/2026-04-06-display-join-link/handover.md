@@ -2,7 +2,7 @@
 
 ## Overview
 
-The victor-macos-addons project now has a "Display join link" feature that shows the participant join URL in a banner at the top of the screen during live training sessions. This feature requires **training-assistant** to send session lifecycle events via WebSocket.
+The victor-mac project now has a "Display join link" feature that shows the participant join URL in a banner at the top of the screen during live training sessions. This feature requires **training-assistant** to send session lifecycle events via WebSocket.
 
 ## What training-assistant Needs to Implement
 
@@ -138,7 +138,7 @@ Adding these new message types is **non-breaking**:
 
 ## Questions?
 
-If you have questions about the integration or need clarification on the expected behavior, please reach out to the victor-macos-addons team.
+If you have questions about the integration or need clarification on the expected behavior, please reach out to the victor-mac team.
 
 ## Timeline
 

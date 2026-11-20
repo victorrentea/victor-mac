@@ -1,6 +1,6 @@
 ## Context
 
-The victor-macos-addons project is a single Swift application (`VictorAddons`) with:
+The victor-mac project is a single Swift application (`VictorAddons`) with:
 - **AppDelegate**: Main coordinator that manages WebSocket connection to training-assistant daemon, handles all application state
 - **MenuBarManager**: Manages menu bar UI (💬 icon) with menu items for various features
 - **OverlayPanel**: Full-screen transparent overlay for UI elements (emoji animations, button bar)

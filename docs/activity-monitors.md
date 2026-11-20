@@ -124,7 +124,7 @@ file, whole minutes at best. So this app does a real save.
   mid-word. Victor picked the minute over 20 s on 2026-11-04.
 - **Never:** during a slide show (saved right after it), or for a deck with no file yet.
 - **A refused save** (Drive does that sometimes) is retried a full minute later, and only shows in
-  the log (`/tmp/victor-macos-addons.log`), as `AutoSave: save <deck> → refused`.
+  the log (`/tmp/victor-mac.log`), as `AutoSave: save <deck> → refused`.
 - Only the **active** presentation is watched; a second edited deck waits until it is in front.
 - **Measured on a 182-slide, 14 MB deck in `~/My Drive` (2026-11-04):** saved 63 s after the edit,
   PowerPoint answering 0.7 s late at worst during the save, undo still working after it. On a file

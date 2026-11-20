@@ -100,7 +100,7 @@ final class RHTimerMonitorTests: XCTestCase {
 - [ ] **Step 2: Run tests to confirm they fail**
 
 ```bash
-cd /Users/victorrentea/workspace/victor-macos-addons
+cd /Users/victorrentea/workspace/victor-mac
 swift test --filter RHTimerMonitorTests 2>&1 | tail -20
 ```
 

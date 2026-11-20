@@ -1,4 +1,4 @@
-# victor-macos-addons
+# victor-mac
 
 macOS menu-bar utilities (💬) for live training workshops: Whisper transcription,
 hotkeys and launchers, the break timer, screenshots, the tablet link and the

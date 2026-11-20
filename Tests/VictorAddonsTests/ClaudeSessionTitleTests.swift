@@ -9,7 +9,7 @@ final class ClaudeSessionTitleTests: XCTestCase {
     /// fourteen windows open.
     func testAStarredTitleIsASession() {
         XCTAssertTrue(ClaudeSessionTitle.isClaudeSession(
-            title: "✳ victor-macos-addons — Terminal layout and cloud instances display"))
+            title: "✳ victor-mac — Terminal layout and cloud instances display"))
         XCTAssertTrue(ClaudeSessionTitle.isClaudeSession(
             title: "✳ workspace — Email către Laur cu Marketplace și Confluence"))
     }

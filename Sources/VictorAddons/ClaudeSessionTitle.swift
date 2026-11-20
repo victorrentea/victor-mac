@@ -5,7 +5,7 @@ import Foundation
 /// **The title is the only thing a window can be asked.** The Accessibility API
 /// hands out geometry and a name and nothing else — no tty, no child process — so
 /// the process table `ClaudeActivity` reads cannot be joined to a window at all.
-/// Claude Code names the window itself while it runs: `✳ victor-macos-addons —
+/// Claude Code names the window itself while it runs: `✳ victor-mac —
 /// Terminal layout and cloud instances display` — the marker, the working
 /// directory, and what the session is about. A shell that is not running one keeps
 /// whatever the profile puts there, `~/workspace` on this Mac.
