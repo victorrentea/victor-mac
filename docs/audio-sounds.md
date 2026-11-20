@@ -175,7 +175,7 @@ the effects app for the same cap at play time (`VideoCeiling`, in `VideoGain.swi
 
 ## ⏺️ Record voice (`VoiceRecorder`, 2026-11-12)
 
-A top-level row under 🎬 Live Captions: **⏺️ Record voice** writes what the room
+A row under 🎬 Live Captions, in the 🎙️ mic item's menu since 2026-11-20: **⏺️ Record voice** writes what the room
 says into `~/Downloads/<yyyy-MM-dd_HH-mm-ss>.m4a` (AAC mono, 48 kHz, 128 kbps —
 `DownloadsFolder`, the screenshots' naming rule). It lived in `victor-effects` for
 ten minutes the same day and was moved here: it is the room's speech, not an effect.

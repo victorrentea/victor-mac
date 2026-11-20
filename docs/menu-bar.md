@@ -9,8 +9,16 @@ draw — the microphone and whether Whisper hears it — is **🎙️ `MicStatus
 bar just left of the V: the roster mic's line drawing (Whisper's source while it runs, else the
 pick, else the system default input mapped onto `MicRoster`), with the state as a corner mark —
 🟥/🟦 blinking = stopped on AC, 🤐 stale, 🍃 off on battery, 👂 recording on battery, nothing =
-transcribing. Its menu is the 🎙️ Transcribing title plus the same Automatic + roster rows
-(`appendMicRows`); a CoreAudio listener redraws it when the default input changes.
+transcribing. A CoreAudio listener redraws it when the default input changes.
+
+**2026-11-20 — every voice row moved under 🎙️** (Victor: *"transcribing, summary, fact check,
+live captions, record voice — totul sub meniul de microfon, pentru că sunt legate de voce"*).
+The 💬 menu no longer carries them; the 🎙️ item's menu (`fillMicMenu`) is, top to bottom:
+🎙️ Transcribing ▸ (🐕 Tail, 🔋 battery recording, 🔴 raw capture, 🎓 corpus), 💬 Last 1m
+summary ⇒ 📋, 🔬 Fact-check last 30 s, 🎬 Live Captions, ⏺️ Record voice, a line, then the
+mic pick — Automatic + the roster (`appendMicRows`), flat, no longer repeated inside the
+Transcribing submenu. The rows are still built in `buildMenu` (`voiceItem`, not `addItem`)
+and re-attached on every open.
 
 - **☠️ Kill port** — submenu with recent ports + custom port dialog
 - **Renamed on 2026-09-22** (Victor's menu pass): `🟢 Interact Link` → `🟢 Display Interact Link ⧈`,

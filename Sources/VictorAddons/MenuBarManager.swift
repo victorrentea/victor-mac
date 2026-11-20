@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 19, 20:20"
+    static let BUILD_TIME = "Nov 19, 23:17"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -94,6 +94,8 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     /// while the menu is open.
     private var liveCaptionsItem: NSMenuItem!
     private var voiceRecordItem: NSMenuItem!
+    private var summaryItem: NSMenuItem!
+    private var factCheckItem: NSMenuItem!
     private var wsConnected: Bool = false
     private var sessionActive: Bool = false
     private(set) var tailItem: NSMenuItem!
@@ -306,10 +308,14 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         resumeItem = addItem("⏱️ Resumed -", action: nil)
         resumeItem.isEnabled = false
 
-        menu.addItem(.separator())
-        // Transcribe status row (read-only; opens the mic-source submenu).
+        // **🎙️ The voice rows live in the mic item's menu** (2026-11-20, Victor:
+        // *"transcribing, summary, fact check, live captions, record voice —
+        // totul sub meniul de microfon, pentru că sunt legate de voce"*). They
+        // are built here, as before, but never added to this menu: `fillMicMenu`
+        // puts them on the 🎙️ item, top to bottom in the order built below.
+        // Transcribe status row (read-only; opens the transcription submenu).
         // Transcription runs automatically on AC — no manual start/stop here.
-        transcribeItem = addItem("🎙️ Transcribing", action: nil)
+        transcribeItem = voiceItem("🎙️ Transcribing", action: nil)
         transcribeSubmenu = NSMenu()
         transcribeSubmenu.autoenablesItems = false
 
@@ -366,7 +372,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // clipboard you have to remember to spend. The emoji is also what the
         // bottom-left confirmation pill opens with, so the row and its receipt
         // read as the same gesture.
-        addItem("💬 Last 1m summary ⇒ 📋", action: #selector(transcriptPickerAction))
+        summaryItem = voiceItem("💬 Last 1m summary ⇒ 📋", action: #selector(transcriptPickerAction))
 
         // 🔬 Fact-check what was just said. It KEPT the top level when the Tail
         // moved down, and that is the line between them: the Tail is a readout
@@ -374,7 +380,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // want in one click. The window is in the title because 10 minutes is
         // the whole contract: it checks the topic being taught, not the
         // sentence that just ended.
-        addItem("🔬 Fact-check last 30 s", action: #selector(researchProofAction))
+        factCheckItem = voiceItem("🔬 Fact-check last 30 s", action: #selector(researchProofAction))
 
         // 🎬 Live subtitles — the band across the bottom of the projector,
         // fed by ElevenLabs Scribe v2 Realtime **only while it is on**.
@@ -389,13 +395,13 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // Directly under the two rows that also act on what was just said, for
         // their reason: the eye looking for anything to do with the room's
         // speech should find all three together.
-        liveCaptionsItem = addItem("🎬 Live Captions", action: #selector(toggleLiveCaptionsAction))
+        liveCaptionsItem = voiceItem("🎬 Live Captions", action: #selector(toggleLiveCaptionsAction))
 
         // ⏺️ Record voice — the room's voices into an .m4a in ~/Downloads, from
         // the mic transcription hears (`VoiceRecorder`). Same group, same reason:
         // it acts on the room's speech. While it runs, a big red dot + clock stands in
         // the menu bar and is the stop button; this row says so too.
-        voiceRecordItem = addItem(VoiceRecordMenu.start, action: #selector(toggleVoiceRecordingAction))
+        voiceRecordItem = voiceItem(VoiceRecordMenu.start, action: #selector(toggleVoiceRecordingAction))
 
         // 📬 Check task inbox — the manual override for the poller's power
         // gate. Scheduled polls only run on AC, so while unplugged this item is
@@ -764,6 +770,14 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             item.isEnabled = true
         }
         menu.addItem(item)
+        return item
+    }
+
+    /// A row of the 🎙️ mic item's menu: built like `addItem`, added by `fillMicMenu`.
+    private func voiceItem(_ title: String, action: Selector?) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.isEnabled = true
         return item
     }
 
@@ -1588,13 +1602,19 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         return transcribeSource.isEmpty ? "🎙️" : transcribeSource
     }
 
-    /// The mic item's menu: where transcription stands, then the same mic rows as
-    /// 🎙️ Transcribing's submenu (Automatic + the roster), built fresh on open.
+    /// The mic item's menu (2026-11-20): every row that acts on the voice —
+    /// 🎙️ Transcribing ▸, 💬 summary, 🔬 fact-check, 🎬 Live Captions, ⏺️ Record
+    /// voice — then, under a line, the mic pick (Automatic + the roster). Built
+    /// fresh on open; `removeAllItems` in `MicStatusItem` frees the rows first.
     private func fillMicMenu(_ menu: NSMenu) {
+        guard transcribeItem != nil else { return }
         updateTranscribeTitle()
-        let header = NSMenuItem(title: transcribeItem?.title ?? "🎙️ Microphone", action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
+        updateTailItem()
+        refreshVoiceRecordItem()
+        onMenuTick?()   // the 🎬 row's minutes and dollars
+        for item in [transcribeItem, summaryItem, factCheckItem, liveCaptionsItem, voiceRecordItem] {
+            if let item { menu.addItem(item) }
+        }
         menu.addItem(.separator())
         appendMicRows(to: menu)
     }
@@ -1917,25 +1937,18 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             transcribeSubmenu.addItem(item)
             transcribeSubmenu.addItem(.separator())
         }
-        // **Automatic first, and it spells the ladder out** — the same row, in
-        // the same words, as Walkie Talkie's mic menu. `Automatic — 🎙️ ▸ 🎤 ▸
-        // 📡 ▸ 🏛️ ▸ 🎧 ▸ 💻` is the order of the rows under it, which is the
-        // point: the list he reads *is* the preference. Never disabled — it is
-        // the one row that is true whatever is on the desk. It was missing here
-        // entirely until 2026-09-22, which meant a pick made in this menu could
-        // never be taken back.
-        appendMicRows(to: transcribeSubmenu)
-        // …then the separator and the 🔴 raw-capture toggle. Below the line
-        // because it is a different kind of row: the ones above choose WHICH mic
-        // is heard, this one decides whether that mic is also written to disk.
-        transcribeSubmenu.addItem(.separator())
+        // The mic pick (Automatic + roster) left this submenu on 2026-11-20: it
+        // sits flat in the 🎙️ item's own menu, one level up, right under this row.
+        // What stays is whether the heard mic is also written to disk.
         applyRecordRawState()
         transcribeSubmenu.addItem(recordRawItem)
         transcribeSubmenu.addItem(voiceCorpusItem)
     }
 
-    /// Automatic + one row per roster mic, ticked by what was picked. Shared by
-    /// 🎙️ Transcribing's submenu and the 🎙️ mic item's menu.
+    /// Automatic + one row per roster mic, ticked by what was picked — the lower
+    /// half of the 🎙️ mic item's menu. **Automatic first, and it spells the
+    /// ladder out**, the same row in the same words as Walkie Talkie's mic menu:
+    /// the list he reads *is* the preference.
     private func appendMicRows(to menu: NSMenu) {
         let auto = NSMenuItem(title: "Automatic — \(MicRoster.ladder)",
                               action: #selector(pickSource(_:)), keyEquivalent: "")
@@ -2048,7 +2061,9 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         } else {
             iconMode = "on"
         }
-        let micRows: [[String: Any]] = transcribeSubmenu.items
+        let micMenu = NSMenu()
+        appendMicRows(to: micMenu)
+        let micRows: [[String: Any]] = micMenu.items
             .filter { !$0.isSeparatorItem && $0.representedObject is String }
             .map { ["title": $0.title,
                     "enabled": $0.isEnabled,
