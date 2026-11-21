@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 20, 22:30"
+    static let BUILD_TIME = "Nov 20, 22:40"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -1873,11 +1873,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             // (2026-09-23, Victor: *"pune aceleași emoji ca-n walkie … toate
             // itemii să fie identici"*).
             let here = availableSources.contains(mic.glyph)
-            // **The absent ones say why they are grey.** A disabled row with no
-            // explanation is indistinguishable from a broken one, and the
-            // explanation is the only thing he can act on — it is a cable.
-            let item = NSMenuItem(title: "\(mic.glyph) \(mic.label)"
-                                      + (here ? "" : " — not connected"),
+            // **Grey alone says it is absent** (2026-11-21, Victor: *"e evident că e not
+            // connected, că e gri … zi doar DJI"*) — the ` — not connected` tail is gone,
+            // here and in Walkie Talkie's `Mic` list.
+            let item = NSMenuItem(title: "\(mic.glyph) \(mic.label)",
                                   action: #selector(pickSource(_:)),
                                   keyEquivalent: "")
             item.target = self
