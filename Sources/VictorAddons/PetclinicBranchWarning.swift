@@ -46,7 +46,8 @@ enum PetclinicBranchPolicy {
 /// purpose should not nag after every redeploy. The dismissal is in
 /// `UserDefaults` (`petclinicBranch.dismissedDay`) so a restart respects it.
 final class PetclinicBranchWarning {
-    static let color = NSColor.systemPurple.withAlphaComponent(0.9)
+    /// Red since 2026-11-22 (Victor: purple read as decoration, not as a warning).
+    static let color = NSColor.systemRed.withAlphaComponent(0.9)
     static let fontSize: CGFloat = 24
     static let checkEvery: TimeInterval = 5
     private static let dismissedKey = "petclinicBranch.dismissedDay"
@@ -124,7 +125,9 @@ final class PetclinicBranchWarning {
         b.onHoverCountdownExpired = { [weak self] in self?.dismissForToday() }
         b.show(text: text, backgroundColor: Self.color,
                font: NSFont.boldSystemFont(ofSize: Self.fontSize),
-               clickAction: .open)
+               // The click only waves it away for today — nothing opens, so the
+               // button says so (it read "Open" until 2026-11-22).
+               clickAction: .dismiss)
     }
 
     private func takeDown() {
