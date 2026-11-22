@@ -67,6 +67,44 @@ struct SlidesSeenPolicy {
     }
 }
 
+/// 📑 What to save when a qualified span closes, so the training-assistant daemon prints the
+/// slide in the last form it was shown (Victor, 2026-11-22). Pure, so the cases are unit-tested.
+///
+/// The sample that closes the span may be about another deck, PowerPoint in the background or
+/// PowerPoint gone; its `saved` describes the *active* presentation only, so it decides alone
+/// only when the active deck is still the span's.
+enum SlidesSeenCloseSave: Equatable {
+    /// Nothing to save: no file, PowerPoint gone, a slide show, or already saved.
+    case none
+    /// The span's deck is the active one and has unsaved edits.
+    case save(String)
+    /// Another deck is active now: ask PowerPoint about the span's own deck first.
+    case saveIfUnsaved(String)
+
+    static func decide(span: SlideSpan, closing s: PowerPointSample) -> SlidesSeenCloseSave {
+        guard let path = span.path, PowerPointDeck.hasFile(path) else { return .none }
+        guard !s.deck.isEmpty else { return .none }              // .gone: PowerPoint quit or closed every deck
+        guard s.path == path else { return .saveIfUnsaved(path) }
+        return s.presenting || s.saved ? .none : .save(path)
+    }
+}
+
+/// 📑 The `slide_seen` message sent to the training-assistant daemon over the local WebSocket:
+/// at the 7 s threshold (`qualified`) and when the slide leaves the screen (`closed`). The
+/// daemon keeps, per training session, one PDF page per slide shown, in its last form.
+enum SlidesSeenEvent {
+    enum Phase: String { case qualified, closed }
+
+    static func payload(_ phase: Phase, span: SlideSpan, at: Date) -> [String: Any]? {
+        guard let path = span.path, PowerPointDeck.hasFile(path) else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        iso.timeZone = .current
+        return ["type": "slide_seen", "phase": phase.rawValue, "path": path, "deck": span.deck,
+                "slide_id": span.slideID, "slide": span.slide, "at": iso.string(from: at)]
+    }
+}
+
 /// 🔎 Which deck to hand back to Spotlight: one seen for the first time, and one that
 /// just went from unsaved to saved. On 2026-11-13 Spotlight stopped picking up saves
 /// under `~/My Drive` for ~11 h (cause not found) and ⌘Space no longer found the decks
@@ -107,6 +145,8 @@ final class SlidesSeenRecorder {
     /// a copy inherits the deck's mtime, so an untouched deck would be pruned the day it was shown.
     static let copyRetentionDays = 5
 
+    /// `slide_seen` messages for the training-assistant daemon (sent on this recorder's queue).
+    var onEvent: (([String: Any]) -> Void)?
     private var policy = SlidesSeenPolicy()
     private let queue = DispatchQueue(label: "ro.victorrentea.slides-seen", qos: .utility)
     /// path → (size, mtime, snapshot file name): skip re-hashing an unchanged deck.
@@ -157,12 +197,26 @@ final class SlidesSeenRecorder {
                         if !sample.saved { PowerPointDeck.save(path, reason: "SlidesSeen") }
                         pendingSnapshot = snapshot(path)
                     }
+                    send(.qualified, span)
                 case .closed(let span):
+                    // Edits made on the slide after the 7 s save: on disk before the daemon reads it.
+                    switch SlidesSeenCloseSave.decide(span: span, closing: sample) {
+                    case .none: break
+                    case .save(let path): PowerPointDeck.save(path, reason: "SlidesSeen")
+                    case .saveIfUnsaved(let path):
+                        if PowerPointDeck.needsSave(path) { PowerPointDeck.save(path, reason: "SlidesSeen") }
+                    }
                     append(span, snapshot: pendingSnapshot)
                     pendingSnapshot = nil
+                    send(.closed, span)
                 }
             }
         }
+    }
+
+    private func send(_ phase: SlidesSeenEvent.Phase, _ span: SlideSpan) {
+        guard let payload = SlidesSeenEvent.payload(phase, span: span, at: span.end) else { return }
+        onEvent?(payload)
     }
 
     /// Content-addressed copy: one file per distinct version of a deck.

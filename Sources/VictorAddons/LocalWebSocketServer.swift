@@ -23,6 +23,9 @@ class LocalWebSocketServer {
     // joined anonymously. The tile itself is not carried: it is already playing
     // out loud, so the tab announces the one thing the room cannot. Dispatched on main.
     var onFxFired: ((_ caller: String, _ anonymous: Bool) -> Void)?
+    // Called when the daemon put a slide into the session's "slides seen" deck —
+    // a new one (`updated` false) or a new form of one already there. Dispatched on main.
+    var onSlideSeenCaptured: ((_ deck: String, _ slide: Int, _ updated: Bool) -> Void)?
 
     private var listener: NWListener?
     private var connections: [UUID: NWConnection] = [:]
@@ -107,6 +110,15 @@ class LocalWebSocketServer {
         var cached = event
         cached.removeValue(forKey: "frontmost")
         lastSlide = cached
+        guard let data = try? JSONSerialization.data(withJSONObject: event),
+              let text = String(data: data, encoding: .utf8) else { return }
+        queue.async { [weak self] in
+            self?.broadcast(text)
+        }
+    }
+
+    /// 📑 `slide_seen` from `SlidesSeenRecorder` (qualified at 7 s, closed when the slide leaves).
+    func pushSlideSeen(_ event: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: event),
               let text = String(data: data, encoding: .utf8) else { return }
         queue.async { [weak self] in
@@ -274,6 +286,15 @@ class LocalWebSocketServer {
             let anonymous = Self.fxAnonymous(from: json)
             DispatchQueue.main.async { [weak self] in
                 self?.onFxFired?(caller, anonymous)
+            }
+        case "slide_seen_captured":
+            // The daemon added (or replaced) a page of the session's seen deck. Single
+            // consumer (the 📷 toast), so not relayed to other clients, like fx_fired.
+            let deck = json["deck"] as? String ?? ""
+            let slide = json["slide"] as? Int ?? 0
+            let updated = (json["change"] as? String) == "updated"
+            DispatchQueue.main.async { [weak self] in
+                self?.onSlideSeenCaptured?(deck, slide, updated)
             }
         case "ping":
             break  // ignore keep-alive

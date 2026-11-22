@@ -155,6 +155,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     /// Bottom-center "[name]" tab — same surface as the bell, in red — shown when
     /// someone holding the secret FX link presses it (via `wsServer.onFxFired`).
     private var fxCard: FxCard?
+    /// 📷 + PowerPoint icon when the daemon adds a slide to the session's seen deck.
+    private var slideSeenToast: SlideSeenToast?
     private var meetingDetector: MeetingDetector?
     /// 📡 Zoom or Teams screen share, debounced — switches the 🎙️ voice meter.
     private let shareWatch = MeetingShareWatch()
@@ -348,6 +350,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         // so the tab only has to say whose press it was.
         wsServer.onFxFired = { [weak self] caller, anonymous in
             self?.fxCard?.show(caller: caller, anonymous: anonymous)
+        }
+        // 📑 The daemon put a slide into the session's seen deck → 📷 + PowerPoint icon,
+        // so a capture in a break or at night does not go unnoticed. Already on main.
+        wsServer.onSlideSeenCaptured = { [weak self] _, _, updated in
+            if self?.slideSeenToast == nil { self?.slideSeenToast = SlideSeenToast() }
+            self?.slideSeenToast?.show(updated: updated)
         }
         wsServer.start()
         self.wsServer = wsServer
@@ -2342,6 +2350,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
         // 📑 Every slide shown ≥ 7 s → day log + a copy of the deck, for the summaries' PDFs.
         let slidesSeen = SlidesSeenRecorder()
+        // …and a `slide_seen` to the daemon, which builds the session's seen deck from it.
+        slidesSeen.onEvent = { [weak self] event in self?.wsServer?.pushSlideSeen(event) }
         let autoSave = PowerPointAutoSave()
         let savedBadge = PowerPointSavedBadge()
         let falseDirty = PowerPointFalseDirty()

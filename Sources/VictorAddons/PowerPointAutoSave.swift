@@ -54,6 +54,27 @@ enum PowerPointDeck {
     /// PowerPoint's full name of a deck never saved is a bare "Presentation1": no file behind it.
     static func hasFile(_ path: String?) -> Bool { path?.hasPrefix("/") ?? false }
 
+    /// True when the deck at `path` is open with unsaved edits and no slide show runs: the deck
+    /// a qualified slide belonged to, when another deck has become the active one since.
+    static func needsSave(_ path: String) -> Bool {
+        guard hasFile(path) else { return false }
+        let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let script = """
+        if application "Microsoft PowerPoint" is not running then return "not running"
+        tell application "Microsoft PowerPoint"
+            if (count of slide show windows) > 0 then return "slide show"
+            repeat with k from 1 to (count of presentations)
+                if (full name of presentation k) is "\(escaped)" then
+                    if saved of presentation k then return "saved"
+                    return "unsaved"
+                end if
+            end repeat
+        end tell
+        return "not open"
+        """
+        return AppleScriptRunner.runDetailed(script, timeout: 10).output == "unsaved"
+    }
+
     /// Saves the open deck at `path`. A refused save raises nothing and `save` itself reports no
     /// error, measured on a locked file: only the deck still being unsaved afterwards tells.
     static func save(_ path: String, reason: String) {

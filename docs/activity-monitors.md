@@ -73,6 +73,21 @@ as PDF pages **exported by PowerPoint itself, links clickable** (`slides_seen.py
   deck (`decks.noindex/<sha256[:16]>.pptx`; unchanged size+mtime → no re-hash). **On close:** one
   JSON line in `log/<day>.jsonl` — start, end, seconds, deck, path, slide, slide_id,
   snapshot, presenting.
+- **`slide_seen` to the training-assistant daemon (2026-11-22)** over the local WebSocket (8765),
+  beside `slide_presenting_now`: `{"type":"slide_seen","phase":"qualified"|"closed","path","deck",
+  "slide_id","slide","at"}` — `qualified` at 7 s (after the save above), `closed` when the span ends.
+  Sent whatever the session state: the daemon files it into the active session's **seen deck** (one
+  PDF page per slide shown, in its last form) or drops it. **On close, the deck is saved again** if it
+  has unsaved edits, so the daemon prints the form the slide had when he left it, not the one at 7 s
+  (`SlidesSeenCloseSave`, `SlidesSeenCloseSaveTests`): the closing probe's `saved` decides only when
+  the active deck is still the span's; another deck in front → `PowerPointDeck.needsSave(path)` asks
+  PowerPoint about the span's own; PowerPoint gone, a slide show or no file → nothing. It goes
+  through `ScriptedSaveLog`, so the daemon's print waits until PowerPoint leaves the front.
+- **📷 toast (`SlideSeenToast`):** when the daemon actually changes the seen deck it answers
+  `{"type":"slide_seen_captured","deck","slide","change":"added"|"updated"}` → 📷 (📷↻ for a new
+  form of a slide already in) + PowerPoint's icon, 1.5 s, top-right of the Retina, no text, clicks
+  pass through. Victor wanted it to notice a capture in a break or at night while a session is open;
+  a slide shown again unchanged sends nothing.
 - **Never a deck without a file** (`PowerPointDeck.hasFile`, the gate inside `save` itself):
   a scripted `save` on a new "Presentation3" does not ask where — it writes a file named
   after the first slide's title into PowerPoint's sandbox `Documents` and marks the deck
