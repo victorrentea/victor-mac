@@ -115,19 +115,20 @@ enum PowerPointDeck {
     /// Saves the open deck at `path`, if it still has unsaved edits by the time PowerPoint is
     /// asked: he may have pressed ⌘S since the probe that called for the save. A refused save
     /// raises nothing and `save` itself reports no error, measured on a locked file: only the
-    /// deck still being unsaved afterwards tells.
-    static func save(_ path: String, reason: String) {
+    /// deck still being unsaved afterwards tells. Returns whether the deck is saved now.
+    @discardableResult
+    static func save(_ path: String, reason: String) -> Bool {
         // Scripted `save` on a deck never saved does not ask where: it writes a file named after
         // the first slide's title into PowerPoint's sandbox and marks the deck saved, so closing
         // it no longer warns (2026-11-18, a new deck lost that way through SlidesSeen).
-        guard hasFile(path) else { return }
+        guard hasFile(path) else { return false }
         let name = URL(fileURLWithPath: path).lastPathComponent
         oneSaveAtATime.lock(); defer { oneSaveAtATime.unlock() }
         // The last gate, for every caller: PowerPoint would refuse it, and it must not be
         // under way when Victor presses ⌘S.
         guard !uploading(path) else {
             overlayInfo("\(reason): save \(name) → skipped, Drive still uploads the previous save")
-            return
+            return false
         }
         let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let script = """
@@ -146,15 +147,13 @@ enum PowerPointDeck {
         let before = ScriptedSaveLog.mtime(of: path)
         let previous = ScriptedSaveLog.started(path)
         let r = AppleScriptRunner.runDetailed(script, timeout: 30)
-        // Only a save that wrote the file is ours to claim. A refused one left the file as the
-        // last save made it — Victor's ⌘S, perhaps — and noting that mtime would make the
-        // daemon hold his print back and the badge call his save an auto-save.
-        if r.output == "saved", ScriptedSaveLog.mtime(of: path) != before {
+        if ScriptedSaveLog.wrote(answer: r.output, before: before, after: ScriptedSaveLog.mtime(of: path)) {
             ScriptedSaveLog.finished(path)
         } else {
             ScriptedSaveLog.restore(path, previous)
         }
         overlayInfo("\(reason): save \(name) → \(r.output ?? r.error ?? "?")")
+        return r.output == "saved" || r.output == "already saved"
     }
 }
 
@@ -192,6 +191,16 @@ enum ScriptedSaveLog {
         var entry: [String: Any] = ["started": (read()[path]?["started"] as? Double) ?? now.timeIntervalSince1970]
         entry["mtime"] = (mtime(of: path) ?? now).timeIntervalSince1970
         update(path, entry)
+    }
+
+    /// Whether the save just asked of PowerPoint wrote the file, and so is this app's to claim.
+    /// Told by the file, not by the answer: a save that wrote it can still answer "refused"
+    /// (he typed again before PowerPoint was asked whether the deck is saved), and left
+    /// unclaimed the daemon would print it in front, as if he had pressed ⌘S, and the badge
+    /// would say "by you". A refused one that wrote nothing left the file with the mtime of
+    /// the save before it — his ⌘S, perhaps — which must not be claimed either.
+    static func wrote(answer: String?, before: Date?, after: Date?) -> Bool {
+        answer != "already saved" && after != nil && after != before
     }
 
     /// The save wrote nothing: the entry goes back to what it said before `started`.

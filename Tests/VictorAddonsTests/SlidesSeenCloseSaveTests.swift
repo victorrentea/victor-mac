@@ -89,6 +89,24 @@ final class SlidesSeenCloseSaveTests: XCTestCase {
         XCTAssertEqual(step(.gone(at: t0), idle: 0.3), .send)
     }
 
+    // MARK: - the save at the 7th second, and what a report left behind
+
+    func testTheSaveAtTheSeventhSecondNeedsUnsavedEditsRestingHandsAndNoSlideShow() {
+        XCTAssertTrue(SlidesSeenCloseSave.saveWhenQualified(s(saved: false), idle: 3, uploading: false))
+        XCTAssertFalse(SlidesSeenCloseSave.saveWhenQualified(s(saved: true), idle: 3, uploading: false))
+        XCTAssertFalse(SlidesSeenCloseSave.saveWhenQualified(s(saved: false), idle: 0.5, uploading: false))
+        XCTAssertFalse(SlidesSeenCloseSave.saveWhenQualified(s(saved: false, presenting: true), idle: 30, uploading: false))
+        XCTAssertFalse(SlidesSeenCloseSave.saveWhenQualified(s(saved: false), idle: 30, uploading: true))
+    }
+
+    func testOnlyTheActiveDecksUnsavedEditsAreKnownToBeLeftBehind() {
+        XCTAssertTrue(SlidesSeenCloseSave.leftUnsaved(span: span(), now: s(saved: false)))
+        XCTAssertFalse(SlidesSeenCloseSave.leftUnsaved(span: span(), now: s(saved: true)))
+        XCTAssertFalse(SlidesSeenCloseSave.leftUnsaved(span: span(), now: s(path: "/d/b.pptx", deck: "b.pptx", saved: false)))
+        XCTAssertFalse(SlidesSeenCloseSave.leftUnsaved(span: span(), now: .gone(at: t0)))
+        XCTAssertFalse(SlidesSeenCloseSave.leftUnsaved(span: span(path: "Presentation1"), now: s(path: "Presentation1", saved: false)))
+    }
+
     // MARK: - slide_seen payload
 
     func testPayloadCarriesTheContract() throws {

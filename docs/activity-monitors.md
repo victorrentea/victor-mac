@@ -70,8 +70,9 @@ as PDF pages **exported by PowerPoint itself, links clickable** (`slides_seen.py
   summary once embedded the wrong slide. The `<p:sldId id>` survives insert/reorder.
 - **At 7 s:** if the presentation has unsaved edits **and his hands have paused** (the rule of
   every scripted save, see *When a scripted save may run* under 💾 auto-save; until 2026-11-23
-  it saved whatever he was doing, mid-edit) → `save` (Victor asked for it, 2026-10-29); a slide
-  he is editing at its 7th second is saved when he leaves it instead. Then a content-addressed copy of the
+  it saved whatever he was doing, mid-edit) **and no slide show runs** → `save` (Victor asked for
+  it, 2026-10-29); a slide he is editing at its 7th second is saved when he leaves it instead.
+  Then a content-addressed copy of the
   deck (`decks.noindex/<sha256[:16]>.pptx`; unchanged size+mtime → no re-hash). **On close:** one
   JSON line in `log/<day>.jsonl` — start, end, seconds, deck, path, slide, slide_id,
   snapshot, presenting.
@@ -90,6 +91,17 @@ as PDF pages **exported by PowerPoint itself, links clickable** (`slides_seen.py
   next was refused. Each probe decides again from the current state, so a ⌘S of his in the meantime
   leaves nothing to save; with PowerPoint behind another app it saves at once; after 60 s of hands
   that never pause the slide is reported as it is on disk, unsaved (AutoSave picks it up).
+  - **The copy named in the day log is taken again when the slide is reported**, after that save:
+    the one from 7 s lacks what he typed since — all of it when the 7 s save was skipped for his
+    busy hands — and `training-summarizer` exports the slide from that copy. Unchanged size and
+    mtime → the same copy, no re-hash.
+  - **A slide reported while its edits were not on disk is reported again** (`closed`, same span)
+    at the first probe that shows its deck saved, or when PowerPoint quits (it may have saved on
+    the way out): the 60 s cap, a slide show, a refused or skipped save. The daemon records the
+    same form twice as nothing, so the extra message costs nothing. Only known for the deck that
+    is active at the report; the day-log line is not rewritten.
+  - The recorder's flow is tested with PowerPoint stood in (`SlidesSeenWorld`,
+    `SlidesSeenRecorderTests`).
 - **📷 toast (`SlideSeenToast`):** when the daemon actually changes the seen deck it answers
   `{"type":"slide_seen_captured","deck","slide","change":"added"|"updated"}` → 📷 (📷↻ for a new
   form of a slide already in) + PowerPoint's icon, 1.5 s, top-right of the Retina, no text, clicks
@@ -174,9 +186,12 @@ file, whole minutes at best. So this app does a real save.
 - **A refused save** is retried a full period (3 min) later, and only shows in
   the log (`/tmp/victor-mac.log`), as `AutoSave: save <deck> → refused`. `→ skipped, Drive still
   uploads the previous save` is the gate above, caught at the last moment.
-- **The log claims only a save that wrote the file** (answer `saved` and a new mtime). A refused one
-  left the file with the mtime of the save before it — his ⌘S, perhaps — and claiming that would make
-  the daemon hold his print back and the badge call his save an auto-save.
+- **The log claims a save by the file, not by PowerPoint's answer** (`ScriptedSaveLog.wrote`): a new
+  mtime, unless the answer was `already saved`. A refused save that wrote nothing left the file with
+  the mtime of the save before it — his ⌘S, perhaps — and claiming that would make the daemon hold
+  his print back and the badge call his save an auto-save. A save that did write but answered
+  `refused` (he typed again before PowerPoint was asked) is ours all the same: unclaimed, the daemon
+  would print it in front as if it were his ⌘S.
 - Only the **active** presentation is watched; a second edited deck waits until it is in front.
 - **Measured on a 182-slide, 14 MB deck in `~/My Drive` (2026-11-04):** saved 63 s after the edit,
   PowerPoint answering 0.7 s late at worst during the save, undo still working after it. On a file

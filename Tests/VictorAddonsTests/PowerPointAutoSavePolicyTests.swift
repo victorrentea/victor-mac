@@ -153,6 +153,25 @@ final class PowerPointAutoSavePolicyTests: XCTestCase {
         }
     }
 
+    /// Which saves this app claims in the log is told by the file, not by PowerPoint's answer.
+    func testASaveIsClaimedWhenItWroteTheFileWhateverPowerPointAnswered() {
+        let before = Date(timeIntervalSince1970: 1_800_000_000)
+        let after = before.addingTimeInterval(4)
+        XCTAssertTrue(ScriptedSaveLog.wrote(answer: "saved", before: before, after: after))
+        // He typed again before PowerPoint was asked "saved?": written all the same.
+        XCTAssertTrue(ScriptedSaveLog.wrote(answer: "refused", before: before, after: after))
+        XCTAssertTrue(ScriptedSaveLog.wrote(answer: nil, before: before, after: after))  // the script timed out
+    }
+
+    func testASaveThatLeftTheFileAsItWasIsNotClaimed() {
+        let before = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertFalse(ScriptedSaveLog.wrote(answer: "refused", before: before, after: before))
+        XCTAssertFalse(ScriptedSaveLog.wrote(answer: "not open", before: before, after: before))
+        XCTAssertFalse(ScriptedSaveLog.wrote(answer: "saved", before: before, after: nil))
+        // Already saved when asked: a new mtime is his ⌘S, made since the probe.
+        XCTAssertFalse(ScriptedSaveLog.wrote(answer: "already saved", before: before, after: before.addingTimeInterval(4)))
+    }
+
     func testTellsItsOwnSaveFromOneMadeByHand() {
         let saved = Date(timeIntervalSince1970: 1_800_000_003.25)
         let entry: [String: Any] = ["started": 1_800_000_000.0, "mtime": 1_800_000_003.25]

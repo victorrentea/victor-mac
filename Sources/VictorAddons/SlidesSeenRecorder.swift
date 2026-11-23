@@ -88,6 +88,21 @@ enum SlidesSeenCloseSave: Equatable {
         return s.presenting || s.saved ? .none : .save(path)
     }
 
+    /// The save at the 7th second of a slide: only for unsaved edits, never during a slide
+    /// show (like AutoSave and the save on leaving), and only at `ScriptedSaveMoment`.
+    static func saveWhenQualified(_ s: PowerPointSample, idle: TimeInterval, uploading: Bool) -> Bool {
+        !s.saved && !s.presenting
+            && ScriptedSaveMoment.allows(idle: idle, frontmost: s.frontmost, uploading: uploading)
+    }
+
+    /// True when a slide reported at this probe, with no save of ours, still has edits that
+    /// are not on disk: the daemon reads the old form, so the report is repeated once the
+    /// deck is saved. Only the active deck's state is known from a probe.
+    static func leftUnsaved(span: SlideSpan, now s: PowerPointSample) -> Bool {
+        guard let path = span.path, PowerPointDeck.hasFile(path) else { return false }
+        return s.path == path && !s.saved
+    }
+
     /// What to do, at one probe, with a slide that was left and not yet reported as `closed`.
     enum Step: Equatable {
         /// His hands are on PowerPoint, or Drive still uploads the previous save: ask again
@@ -157,6 +172,17 @@ struct SpotlightReindexPolicy {
     }
 }
 
+/// What `SlidesSeenRecorder` touches outside itself, so its flow is tested without PowerPoint.
+struct SlidesSeenWorld {
+    var root: URL = SlidesSeenRecorder.root
+    var idle: () -> TimeInterval = ScriptedSaveMoment.secondsSinceLastInput
+    var uploading: (String) -> Bool = PowerPointDeck.uploading
+    /// Saves the deck; true when it is saved afterwards.
+    var save: (String) -> Bool = { PowerPointDeck.save($0, reason: "SlidesSeen") }
+    var needsSave: (String) -> Bool = PowerPointDeck.needsSave
+    var spotlightImport: (String) -> Void = SlidesSeenRecorder.spotlightImport
+}
+
 /// 📑 Slides seen: every slide shown ≥ 7 s goes into a day log, with a copy of the
 /// deck as it was on disk when shown, so a summary can later export exactly that
 /// slide (by `slide ID`, not position) as a PDF page with its links.
@@ -190,15 +216,24 @@ final class SlidesSeenRecorder {
     /// Slides left and not yet reported as `closed`, oldest first: their deck has unsaved
     /// edits and the save waits for his hands to pause (`SlidesSeenCloseSave.step`).
     private var leftSlides: [(span: SlideSpan, snapshot: String?, since: Date)] = []
+    /// Slides reported as `closed` while their deck still had unsaved edits (hands that
+    /// never paused, a slide show, a refused save), by deck path: reported again at the
+    /// first probe that shows the deck saved, so the daemon gets the form that was shown.
+    private var reportedUnsaved: [String: [SlideSpan]] = [:]
     private var reindex = SpotlightReindexPolicy()
     private var lastPrune = Date()
+    private let world: SlidesSeenWorld
 
-    init() {
+    init(world: SlidesSeenWorld = SlidesSeenWorld()) {
+        self.world = world
         queue.async {
-            Self.migrateDecksDir()
-            Self.prune()
+            Self.migrateDecksDir(root: world.root)
+            Self.prune(root: world.root)
         }
     }
+
+    /// Waits for every probe consumed so far (tests).
+    func drain() { queue.sync {} }
 
     /// The copies lived in `decks/` until 2026-11-13: move the folder once, whole.
     static func migrateDecksDir(root: URL = SlidesSeenRecorder.root) {
@@ -211,7 +246,7 @@ final class SlidesSeenRecorder {
         }
     }
 
-    private static func spotlightImport(_ path: String) {
+    static func spotlightImport(_ path: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/mdimport")
         p.arguments = [path]
@@ -222,8 +257,8 @@ final class SlidesSeenRecorder {
 
     func consume(_ sample: PowerPointSample) {
         queue.async { [self] in
-            if let path = reindex.consume(sample) { Self.spotlightImport(path) }
-            let idle = ScriptedSaveMoment.secondsSinceLastInput()
+            if let path = reindex.consume(sample) { world.spotlightImport(path) }
+            reportAgainOnceSaved(sample)
             for action in policy.consume(sample) {
                 switch action {
                 case .qualified(let span):
@@ -233,9 +268,9 @@ final class SlidesSeenRecorder {
                         // Unsaved edits are not on disk, and the copy is taken from disk: save first.
                         // Victor asked for it (2026-10-29) — but not under his hands: a slide he is
                         // editing at its 7th second is saved when he leaves it (`reportLeftSlides`).
-                        if !sample.saved, ScriptedSaveMoment.allows(idle: idle, frontmost: sample.frontmost,
-                                                                    uploading: PowerPointDeck.uploading(path)) {
-                            PowerPointDeck.save(path, reason: "SlidesSeen")
+                        if SlidesSeenCloseSave.saveWhenQualified(sample, idle: world.idle(),
+                                                                 uploading: world.uploading(path)) {
+                            _ = world.save(path)
                         }
                         pendingSnapshot = snapshot(path)
                     }
@@ -245,34 +280,67 @@ final class SlidesSeenRecorder {
                     pendingSnapshot = nil
                 }
             }
-            reportLeftSlides(sample, idle: idle)
+            reportLeftSlides(sample)
         }
     }
 
     /// Edits made on a slide after its 7 s save go to disk before the daemon reads it — once
     /// his hands have paused. In the order the slides were left; one save covers them all.
-    private func reportLeftSlides(_ sample: PowerPointSample, idle: TimeInterval) {
-        var saved: Set<String> = []
+    private func reportLeftSlides(_ sample: PowerPointSample) {
+        /// Decks dealt with in this pass → whether edits of theirs are still not on disk.
+        var unsavedAfter: [String: Bool] = [:]
         while let left = leftSlides.first {
             let path = left.span.path ?? ""
-            if !saved.contains(path) {
+            let unsaved: Bool
+            if let known = unsavedAfter[path] {
+                unsaved = known
+            } else {
+                // His hands are asked about again for every slide: a save takes a second,
+                // sometimes thirty, and he may be typing again by the next one.
                 let step = SlidesSeenCloseSave.step(
                     span: left.span, now: sample, waited: sample.at.timeIntervalSince(left.since),
-                    idle: idle, uploading: PowerPointDeck.uploading(path))
+                    idle: world.idle(), uploading: world.uploading(path))
                 switch step {
                 case .wait: return
-                case .send: break
-                case .saveThenSend(let path):
-                    PowerPointDeck.save(path, reason: "SlidesSeen")
-                    saved.insert(path)
-                case .askThenSend(let path):
-                    if PowerPointDeck.needsSave(path) { PowerPointDeck.save(path, reason: "SlidesSeen") }
-                    saved.insert(path)
+                case .send: unsaved = SlidesSeenCloseSave.leftUnsaved(span: left.span, now: sample)
+                case .saveThenSend(let path): unsaved = !world.save(path)
+                case .askThenSend(let path): unsaved = world.needsSave(path) && !world.save(path)
                 }
+                unsavedAfter[path] = unsaved
             }
-            append(left.span, snapshot: left.snapshot)
+            // The copy named in the day log is the deck as it is on disk now, after the save:
+            // the one taken at 7 s lacks what he typed since, and all of it when that save was
+            // skipped for his busy hands. Unchanged size and mtime → the same copy, no re-hash.
+            let shown = PowerPointDeck.hasFile(path) ? snapshot(path) : nil
+            append(left.span, snapshot: shown ?? left.snapshot)
             send(.closed, left.span)
+            if unsaved { rememberUnsaved(left.span, path) }
             leftSlides.removeFirst()
+        }
+    }
+
+    private func rememberUnsaved(_ span: SlideSpan, _ path: String) {
+        var spans = reportedUnsaved[path, default: []]
+        spans.removeAll { $0.slideID == span.slideID }
+        spans.append(span)
+        reportedUnsaved[path] = spans
+    }
+
+    /// The daemon read those slides before their edits reached the disk: tell it again now
+    /// that they have (it records a slide in the same form twice as nothing). PowerPoint gone
+    /// may have saved on its way out, and nothing more will be known: all of them go again.
+    private func reportAgainOnceSaved(_ sample: PowerPointSample) {
+        guard !reportedUnsaved.isEmpty else { return }
+        let ready: [String]
+        if sample.deck.isEmpty {
+            ready = Array(reportedUnsaved.keys)
+        } else if let path = sample.path, sample.saved, reportedUnsaved[path] != nil {
+            ready = [path]
+        } else {
+            return
+        }
+        for path in ready.sorted() {
+            for span in reportedUnsaved.removeValue(forKey: path) ?? [] { send(.closed, span) }
         }
     }
 
@@ -288,8 +356,8 @@ final class SlidesSeenRecorder {
               let size = (attrs[.size] as? NSNumber)?.intValue,
               let mtime = attrs[.modificationDate] as? Date else { return nil }
         // The app runs for days: prune here too, not only at launch.
-        if Date().timeIntervalSince(lastPrune) > 3600 { Self.prune(); lastPrune = Date() }
-        let decks = Self.root.appendingPathComponent(Self.decksDirName)
+        if Date().timeIntervalSince(lastPrune) > 3600 { Self.prune(root: world.root); lastPrune = Date() }
+        let decks = world.root.appendingPathComponent(Self.decksDirName)
         if let last = lastSnapshot[path], last.0 == size, last.1 == mtime,
            fm.fileExists(atPath: decks.appendingPathComponent(last.2).path) {
             Self.markShown(decks.appendingPathComponent(last.2))
@@ -326,7 +394,7 @@ final class SlidesSeenRecorder {
         guard let data = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else { return }
         let day = DateFormatter()
         day.dateFormat = "yyyy-MM-dd"
-        let logDir = Self.root.appendingPathComponent("log")
+        let logDir = world.root.appendingPathComponent("log")
         let file = logDir.appendingPathComponent("\(day.string(from: span.start)).jsonl")
         do {
             try FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
