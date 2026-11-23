@@ -115,10 +115,11 @@ final class MicDeadAlarm {
 }
 
 /// 🎤 The DJI transmitter's battery, when it is low: the app's ordinary
-/// bottom-left notification for 5 s, `🎤 10%`, each time the
-/// reading changes while it is under 20 % (Victor: "să o afișezi din % în %
-/// pentru 5 sec când e sub 20 %"). On the receiver's 7-step gauge that is
-/// twice: level 6 (DJI's own warning) and level 7 (shutdown follows).
+/// bottom-left notification, `🎤 10%`, **with a sound**, each time the
+/// reading changes while it is under 30 % — on the receiver's 7-step gauge
+/// levels 5, 6 and 7 (20 %, 10 %, 5 %) — and every minute while it sits on
+/// the last step (`DjiReceiverPolicy.lastStepRepeat`). Silent until
+/// 2026-11-23, when the TX died with both notices unseen.
 ///
 /// **The icon alone names the mic** (2026-10-02, Victor: *"nu mai scrie «DJI»
 /// … doar icon-ul lui … plus bateria"*): 🎤 is the DJI's glyph in `MicRoster`,
@@ -127,17 +128,20 @@ final class MicDeadAlarm {
 /// Shown through the app's shared `StatusBanner` (`show`), so it takes its
 /// turn with every other corner message instead of stacking on top of one.
 final class DjiBatteryNotice {
-    static let hold: TimeInterval = 5
-    private let show: (String) -> Void
+    static let hold: TimeInterval = 8
+    /// Low (20 %, 10 %) and last step (5 %): two sounds, so the last one is
+    /// told apart without looking.
+    static func soundName(level: Int) -> String { level >= 7 ? "Basso" : "Submarine" }
+    private let show: (String, NSSound?) -> Void
 
-    init(show: @escaping (String) -> Void) { self.show = show }
+    init(show: @escaping (String, NSSound?) -> Void) { self.show = show }
 
     static func text(percent: Int) -> String { "🎤 \(percent)%" }
 
     func show(level: Int, percent: Int) {
         let text = Self.text(percent: percent)
         overlayInfo("🎤 battery notice: \(text) (raw level \(level)/7)")
-        show(text)
+        show(text, NSSound(named: NSSound.Name(Self.soundName(level: level))))
     }
 }
 

@@ -121,10 +121,17 @@ enum DjiReceiverProtocol {
 /// clock, returns the announcements — the IOKit reader and the banners are
 /// plumbing around it.
 struct DjiReceiverPolicy {
-    /// Below this, every change of the reading is shown (Victor: "să o afișezi
-    /// din % în % pentru 5 sec când e sub 20 %"). On a 7-step gauge that is
-    /// levels 6 and 7.
-    static let lowPercent = 20
+    /// Below this, every change of the reading is shown **and heard**
+    /// (2026-11-23, Victor, after the TX died mid-session with only two silent
+    /// 5-second notices: *"I should hear a warning when it's under thirty
+    /// percent … thirty, twenty, ten … then a warning every percentage since
+    /// ten down to zero"*). On a 7-step gauge that is levels 5, 6 and 7 —
+    /// 20 %, 10 %, 5 %; the gauge has no finer steps to warn on.
+    static let lowPercent = 30
+    /// At the last step (level 7, "5 %") the warning repeats this often —
+    /// the stand-in for "every percent below ten", which the receiver never
+    /// reports. On 2026-11-23 level 7 lasted 6 minutes (17:46 → 17:52).
+    static let lastStepRepeat: TimeInterval = 60
     /// How long "no transmitter linked" must last before the red alarm.
     /// A transmitter re-links in a second or two after a radio hiccup; a dead
     /// one never does. 5 s is far past the first and costs nothing on the
@@ -132,7 +139,7 @@ struct DjiReceiverPolicy {
     static let linkLossGrace: TimeInterval = 5
 
     enum Event: Equatable {
-        /// Show the 5-second battery tab.
+        /// Show the battery tab, with a sound.
         case lowBattery(unit: Int, level: Int, percent: Int)
         /// Every level change, for the log (the only place the raw level goes).
         case levelChanged(unit: Int, level: Int, charging: Bool)
@@ -144,6 +151,8 @@ struct DjiReceiverPolicy {
 
     private var lastLevel: [Int: Int] = [:]
     private var lastCharging: [Int: Bool] = [:]
+    /// When the last-step warning was last given, per unit.
+    private var lastStepWarnedAt: [Int: Date] = [:]
     private var wasLinked = false
     private var lastLinkedLevel: Int?
     private var lastLinkedCharging = false
@@ -158,9 +167,15 @@ struct DjiReceiverPolicy {
                 if !tx.charging, let pct = DjiReceiverProtocol.percent(level: tx.level),
                    pct < Self.lowPercent, lastLevel[tx.unit] != tx.level {
                     events.append(.lowBattery(unit: tx.unit, level: tx.level, percent: pct))
+                    lastStepWarnedAt[tx.unit] = now
                 }
                 lastLevel[tx.unit] = tx.level
                 lastCharging[tx.unit] = tx.charging
+            } else if tx.level == 7, !tx.charging, let pct = DjiReceiverProtocol.percent(level: 7),
+                      let warned = lastStepWarnedAt[tx.unit],
+                      now.timeIntervalSince(warned) >= Self.lastStepRepeat {
+                events.append(.lowBattery(unit: tx.unit, level: 7, percent: pct))
+                lastStepWarnedAt[tx.unit] = now
             }
             lastLinkedLevel = tx.level
             lastLinkedCharging = tx.charging

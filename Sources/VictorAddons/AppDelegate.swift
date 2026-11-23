@@ -48,8 +48,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private let djiNoTxWarning = DjiNoTxWarning()
     /// 🎤 the receiver's own status over USB: TX linked + battery gauge.
     private let djiReceiver = DjiReceiverMonitor()
-    private lazy var djiBatteryNotice = DjiBatteryNotice(show: { [weak self] text in
-        self?.statusBanner?.showNow(text: text, sound: nil, visibleDuration: DjiBatteryNotice.hold)
+    private lazy var djiBatteryNotice = DjiBatteryNotice(show: { [weak self] text, sound in
+        self?.statusBanner?.showNow(text: text, sound: sound, visibleDuration: DjiBatteryNotice.hold)
     })
     /// The test hooks' own corner pill, so a review can stay off the retina.
     private var djiTestStatusBanner: StatusBanner?
@@ -839,7 +839,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 } else {
                     let banner = self.djiTestStatusBanner ?? StatusBanner(screensProvider: provider)
                     self.djiTestStatusBanner = banner
-                    DjiBatteryNotice(show: { banner.showNow(text: $0, sound: nil, visibleDuration: DjiBatteryNotice.hold) })
+                    DjiBatteryNotice(show: { text, _ in banner.showNow(text: text, sound: nil, visibleDuration: DjiBatteryNotice.hold) })
                         .show(level: lvl, percent: pct)
                 }
             case "link-lost":

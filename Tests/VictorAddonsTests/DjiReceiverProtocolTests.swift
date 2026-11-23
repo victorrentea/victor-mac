@@ -64,15 +64,44 @@ final class DjiReceiverProtocolTests: XCTestCase {
     }
     private let t0 = Date(timeIntervalSince1970: 1_790_000_000)
 
-    func testLowBatteryShownOnEveryChangeBelowTwentyPercentOnly() {
+    func testLowBatteryShownOnEveryChangeBelowThirtyPercentOnly() {
         var p = DjiReceiverPolicy()
         var shown: [Int] = []
-        for (i, lvl) in [4, 5, 5, 6, 6, 7].enumerated() {
+        for (i, lvl) in [3, 4, 5, 5, 6, 6, 7].enumerated() {
             for e in p.feed(status(0x02, [(2, lvl, false)]), now: t0 + Double(i)) {
                 if case .lowBattery(_, _, let pct) = e { shown.append(pct) }
             }
         }
-        XCTAssertEqual(shown, [10, 5])
+        XCTAssertEqual(shown, [20, 10, 5])
+    }
+
+    /// The gauge has nothing below "5 %", so the last step repeats instead.
+    func testLastStepRepeatsEveryMinuteButNotWhileCharging() {
+        var p = DjiReceiverPolicy()
+        var at: [TimeInterval] = []
+        func feed(_ lvl: Int, _ t: TimeInterval, charging: Bool = false) {
+            for e in p.feed(status(0x02, [(2, lvl, charging)]), now: t0 + t) {
+                if case .lowBattery = e { at.append(t) }
+            }
+        }
+        feed(6, 0)
+        for t in stride(from: 10.0, through: 200, by: 10) { feed(7, t) }   // 7 from t=10
+        XCTAssertEqual(at, [0, 10, 70, 130, 190])
+        at = []
+        for t in stride(from: 210.0, through: 400, by: 10) { feed(7, t, charging: true) }
+        XCTAssertEqual(at, [])
+    }
+
+    /// Level 6 is a single warning, however long it lasts (an hour on 2026-11-23).
+    func testOnlyTheLastStepRepeats() {
+        var p = DjiReceiverPolicy()
+        var n = 0
+        for t in stride(from: 0.0, through: 3600, by: 30) {
+            for e in p.feed(status(0x02, [(2, 6, false)]), now: t0 + t) {
+                if case .lowBattery = e { n += 1 }
+            }
+        }
+        XCTAssertEqual(n, 1)
     }
 
     func testLinkLossAlarmsAfterTheGraceOnceAndReportsTheReturn() {
