@@ -5,15 +5,16 @@ import Foundation
 /// A deck that stays unsaved for `dirtySeconds` (3 min since 2026-11-20: every save now also
 /// makes the training-assistant daemon print the changed slides) is saved at the first moment Victor's hands
 /// have been off the mouse and keyboard for `idleSeconds`, so a save never lands mid-word,
-/// and never during a slide show.
+/// and never during a slide show. While Google Drive still uploads the previous save
+/// (`uploading`) it waits, without restarting the clock: PowerPoint would refuse that save.
 struct PowerPointAutoSavePolicy {
     var dirtySeconds: TimeInterval = 180
-    var idleSeconds: TimeInterval = 3
+    var idleSeconds: TimeInterval = ScriptedSaveMoment.handsPausedSeconds
     private var dirtyPath: String?
     private var dirtySince: Date?
 
     /// The path to save now, if any.
-    mutating func consume(_ s: PowerPointSample, idle: TimeInterval) -> String? {
+    mutating func consume(_ s: PowerPointSample, idle: TimeInterval, uploading: Bool = false) -> String? {
         guard !s.saved, let path = s.path, PowerPointDeck.hasFile(path) else {
             dirtyPath = nil
             dirtySince = nil
@@ -24,8 +25,9 @@ struct PowerPointAutoSavePolicy {
             dirtySince = s.at
             return nil
         }
-        guard !s.presenting, idle >= idleSeconds, s.at.timeIntervalSince(since) >= dirtySeconds else { return nil }
-        dirtySince = s.at  // a save Drive refused shows up as still unsaved: try again a full period later
+        guard !s.presenting, !uploading, idle >= idleSeconds,
+              s.at.timeIntervalSince(since) >= dirtySeconds else { return nil }
+        dirtySince = s.at  // a save that was refused shows up as still unsaved: try again a full period later
         return path
     }
 }
@@ -38,13 +40,38 @@ final class PowerPointAutoSave {
 
     func consume(_ sample: PowerPointSample) {
         queue.async { [self] in
-            if let path = policy.consume(sample, idle: Self.secondsSinceLastInput()) {
+            let uploading = sample.path.map(PowerPointDeck.uploading) ?? false
+            if let path = policy.consume(sample, idle: ScriptedSaveMoment.secondsSinceLastInput(), uploading: uploading) {
                 PowerPointDeck.save(path, reason: "AutoSave")
             }
         }
     }
+}
 
-    private static func secondsSinceLastInput() -> TimeInterval {
+/// 💾 When a save made by this app (AutoSave, SlidesSeen) may run, so that Victor's own ⌘S
+/// always wins (2026-11-23: "PowerPoint says the file cannot be saved, then an auto-save happens").
+///
+/// Google Drive uploads a saved deck through a temporary hard link (`DriveSpotlightKeeper`),
+/// held 7–15 s for a 16 MB deck, longer on a slow network, and PowerPoint refuses to save a
+/// file that has a second link ("The document could not be saved", measured 2026-11-18). So
+/// **every save shuts the next one out for those seconds** — and a save of ours, made while
+/// he is still working on the slide, shut out the ⌘S he pressed right after his edit. The
+/// SlidesSeen save used to land 7 s after he reached a slide, whatever his hands were doing.
+///
+/// So a scripted save waits for his hands to pause (he is then not about to press ⌘S on what
+/// he just typed), and never starts while Drive still uploads the previous save: PowerPoint
+/// would refuse it, as it did in the log ("→ refused" seconds after another save).
+/// Pure, so the rule is unit-tested.
+enum ScriptedSaveMoment {
+    static let handsPausedSeconds: TimeInterval = 3
+
+    /// `frontmost`: PowerPoint is the app in front. Behind another app nothing he types reaches
+    /// it, ⌘S included, so there his hands do not matter.
+    static func allows(idle: TimeInterval, frontmost: Bool, uploading: Bool) -> Bool {
+        !uploading && (idle >= handsPausedSeconds || !frontmost)
+    }
+
+    static func secondsSinceLastInput() -> TimeInterval {
         guard let anyInput = CGEventType(rawValue: ~0) else { return 0 }
         return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput)
     }
@@ -75,18 +102,39 @@ enum PowerPointDeck {
         return AppleScriptRunner.runDetailed(script, timeout: 10).output == "unsaved"
     }
 
-    /// Saves the open deck at `path`. A refused save raises nothing and `save` itself reports no
-    /// error, measured on a locked file: only the deck still being unsaved afterwards tells.
+    /// True while Google Drive holds the file through its upload hard link: the seconds after
+    /// a save in which PowerPoint refuses the next one (see `ScriptedSaveMoment`).
+    static func uploading(_ path: String) -> Bool {
+        var st = stat()
+        return lstat(path, &st) == 0 && st.st_nlink > 1
+    }
+
+    /// AutoSave and SlidesSeen run on their own queues and can pick the same pause of his hands.
+    private static let oneSaveAtATime = NSLock()
+
+    /// Saves the open deck at `path`, if it still has unsaved edits by the time PowerPoint is
+    /// asked: he may have pressed ⌘S since the probe that called for the save. A refused save
+    /// raises nothing and `save` itself reports no error, measured on a locked file: only the
+    /// deck still being unsaved afterwards tells.
     static func save(_ path: String, reason: String) {
         // Scripted `save` on a deck never saved does not ask where: it writes a file named after
         // the first slide's title into PowerPoint's sandbox and marks the deck saved, so closing
         // it no longer warns (2026-11-18, a new deck lost that way through SlidesSeen).
         guard hasFile(path) else { return }
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        oneSaveAtATime.lock(); defer { oneSaveAtATime.unlock() }
+        // The last gate, for every caller: PowerPoint would refuse it, and it must not be
+        // under way when Victor presses ⌘S.
+        guard !uploading(path) else {
+            overlayInfo("\(reason): save \(name) → skipped, Drive still uploads the previous save")
+            return
+        }
         let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let script = """
         tell application "Microsoft PowerPoint"
             repeat with k from 1 to (count of presentations)
                 if (full name of presentation k) is "\(escaped)" then
+                    if saved of presentation k then return "already saved"
                     save presentation k
                     if saved of presentation k then return "saved"
                     return "refused"
@@ -95,10 +143,18 @@ enum PowerPointDeck {
         end tell
         return "not open"
         """
-        ScriptedSaveLog.started(path)
+        let before = ScriptedSaveLog.mtime(of: path)
+        let previous = ScriptedSaveLog.started(path)
         let r = AppleScriptRunner.runDetailed(script, timeout: 30)
-        ScriptedSaveLog.finished(path)
-        overlayInfo("\(reason): save \(URL(fileURLWithPath: path).lastPathComponent) → \(r.output ?? r.error ?? "?")")
+        // Only a save that wrote the file is ours to claim. A refused one left the file as the
+        // last save made it — Victor's ⌘S, perhaps — and noting that mtime would make the
+        // daemon hold his print back and the badge call his save an auto-save.
+        if r.output == "saved", ScriptedSaveLog.mtime(of: path) != before {
+            ScriptedSaveLog.finished(path)
+        } else {
+            ScriptedSaveLog.restore(path, previous)
+        }
+        overlayInfo("\(reason): save \(name) → \(r.output ?? r.error ?? "?")")
     }
 }
 
@@ -114,15 +170,44 @@ enum ScriptedSaveLog {
         .appendingPathComponent("powerpoint-scripted-saves.json")
     private static let lock = NSLock()
 
-    static func started(_ path: String, at now: Date = Date()) {
+    /// A save under way that never wrote its end (the app killed mid-save) stops counting
+    /// after this; the daemon's `save_origin.py` uses the same window.
+    static let underWaySeconds: TimeInterval = 120
+    /// A day is plenty: the daemon looks at a save within seconds of it.
+    static let keptSeconds: TimeInterval = 86400
+
+    static func mtime(of path: String) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+    }
+
+    /// Notes a save as under way. Returns the entry it replaces, for `restore`.
+    @discardableResult
+    static func started(_ path: String, at now: Date = Date()) -> [String: Any]? {
+        let previous = read()[path]
         update(path, ["started": now.timeIntervalSince1970])
+        return previous
     }
 
     static func finished(_ path: String, at now: Date = Date()) {
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date)
         var entry: [String: Any] = ["started": (read()[path]?["started"] as? Double) ?? now.timeIntervalSince1970]
-        if let mtime { entry["mtime"] = mtime.timeIntervalSince1970 } else { entry["mtime"] = now.timeIntervalSince1970 }
+        entry["mtime"] = (mtime(of: path) ?? now).timeIntervalSince1970
         update(path, entry)
+    }
+
+    /// The save wrote nothing: the entry goes back to what it said before `started`.
+    static func restore(_ path: String, _ previous: [String: Any]?) {
+        update(path, previous)
+    }
+
+    /// True when the save that gave the file this `mtime` was made by this app, not by ⌘S.
+    /// The same rule as the daemon's `is_scripted_save`.
+    static func isScripted(entry: [String: Any]?, mtime: Date) -> Bool {
+        guard let entry, let started = entry["started"] as? Double else { return false }
+        let m = mtime.timeIntervalSince1970
+        guard let after = entry["mtime"] as? Double else {
+            return started - 1 <= m && m <= started + underWaySeconds
+        }
+        return abs(after - m) < 1
     }
 
     static func read() -> [String: [String: Any]] {
@@ -131,12 +216,11 @@ enum ScriptedSaveLog {
         return json
     }
 
-    private static func update(_ path: String, _ entry: [String: Any]) {
+    private static func update(_ path: String, _ entry: [String: Any]?) {
         lock.lock(); defer { lock.unlock() }
         var all = read()
         all[path] = entry
-        // A day is plenty: the daemon looks at a save within seconds of it.
-        let cutoff = Date().timeIntervalSince1970 - 86400
+        let cutoff = Date().timeIntervalSince1970 - keptSeconds
         all = all.filter { (($0.value["started"] as? Double) ?? 0) > cutoff }
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)

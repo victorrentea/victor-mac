@@ -68,8 +68,10 @@ as PDF pages **exported by PowerPoint itself, links clickable** (`slides_seen.py
   time window is the filter (Victor, 2026-10-29: „mereu").
 - **Why slide ID, not position:** Victor inserts slides mid-course; positions shift and a
   summary once embedded the wrong slide. The `<p:sldId id>` survives insert/reorder.
-- **At 7 s:** if the presentation has unsaved edits → `save` (Victor asked for it,
-  knowing Google Drive sometimes refuses a save); then a content-addressed copy of the
+- **At 7 s:** if the presentation has unsaved edits **and his hands have paused** (the rule of
+  every scripted save, see *When a scripted save may run* under 💾 auto-save; until 2026-11-23
+  it saved whatever he was doing, mid-edit) → `save` (Victor asked for it, 2026-10-29); a slide
+  he is editing at its 7th second is saved when he leaves it instead. Then a content-addressed copy of the
   deck (`decks.noindex/<sha256[:16]>.pptx`; unchanged size+mtime → no re-hash). **On close:** one
   JSON line in `log/<day>.jsonl` — start, end, seconds, deck, path, slide, slide_id,
   snapshot, presenting.
@@ -83,6 +85,11 @@ as PDF pages **exported by PowerPoint itself, links clickable** (`slides_seen.py
   the active deck is still the span's; another deck in front → `PowerPointDeck.needsSave(path)` asks
   PowerPoint about the span's own; PowerPoint gone, a slide show or no file → nothing. It goes
   through `ScriptedSaveLog`, so the daemon's print waits until PowerPoint leaves the front.
+  **That save, and the `closed` message with it, wait for his hands to pause** (`SlidesSeenCloseSave.step`,
+  since 2026-11-23): it used to run on the very click that left the slide, and the ⌘S he pressed
+  next was refused. Each probe decides again from the current state, so a ⌘S of his in the meantime
+  leaves nothing to save; with PowerPoint behind another app it saves at once; after 60 s of hands
+  that never pause the slide is reported as it is on disk, unsaved (AutoSave picks it up).
 - **📷 toast (`SlideSeenToast`):** when the daemon actually changes the seen deck it answers
   `{"type":"slide_seen_captured","deck","slide","change":"added"|"updated"}` → 📷 (📷↻ for a new
   form of a slide already in) + PowerPoint's icon, 1.5 s, top-right of the Retina, no text, clicks
@@ -144,8 +151,32 @@ file, whole minutes at best. So this app does a real save.
   can tell them from Victor's ⌘S. After his ⌘S it prints at once; after one of these it waits until
   PowerPoint is no longer in front (`training-assistant/daemon/slides/save_origin.py`).
 - **Never:** during a slide show (saved right after it), or for a deck with no file yet.
-- **A refused save** (Drive does that sometimes) is retried a full period (3 min) later, and only shows in
-  the log (`/tmp/victor-mac.log`), as `AutoSave: save <deck> → refused`.
+- **When a scripted save may run (`ScriptedSaveMoment`, 2026-11-23) — so that his ⌘S always wins.**
+  Victor: *"sometimes I make a change, press ⌘S and PowerPoint says the file cannot be saved, then
+  an auto-save happens"*. The mechanism: Google Drive uploads a saved deck through a temporary hard
+  link (`~/My Drive/.tmp.driveupload/<n>`, see `DriveSpotlightKeeper`), held 7–15 s for a 16 MB deck
+  and longer on a slow network, and **PowerPoint refuses to save a file that has a second link**
+  ("The document could not be saved", measured 2026-11-18 with a permanent link). So every save shuts
+  the next one out for those seconds, and each save of ours opened such a window right where he was
+  working: SlidesSeen saved 7 s after he reached a slide and again on the click that left it,
+  whatever his hands were doing (~100 scripted saves on 2026-11-20). The mirror case is in that
+  day's log: `SlidesSeen: save … → refused` and `AutoSave: … → refused` 7 s apart, right after a
+  save of his. The rule now, for AutoSave and both SlidesSeen saves:
+  - **only when his hands have paused 3 s** (or PowerPoint is behind another app, where no ⌘S can
+    reach it): he is then not about to press ⌘S on what he just typed;
+  - **never while Drive still uploads the previous save** (`PowerPointDeck.uploading`: link count
+    > 1) — AutoSave waits for the upload without restarting its 3 min;
+  - **one at a time, and only if still unsaved when PowerPoint is asked** (the script answers
+    `already saved`): a probe is up to 2 s old, and he may have pressed ⌘S since.
+  **Not covered:** a ⌘S that comes more than 3 s after his last touch and within the upload of a
+  save we made in that pause still meets Drive's link — as does his own second ⌘S within ~15 s of
+  his first. Closing that needs the ⌘S itself held back until the link is gone (not built).
+- **A refused save** is retried a full period (3 min) later, and only shows in
+  the log (`/tmp/victor-mac.log`), as `AutoSave: save <deck> → refused`. `→ skipped, Drive still
+  uploads the previous save` is the gate above, caught at the last moment.
+- **The log claims only a save that wrote the file** (answer `saved` and a new mtime). A refused one
+  left the file with the mtime of the save before it — his ⌘S, perhaps — and claiming that would make
+  the daemon hold his print back and the badge call his save an auto-save.
 - Only the **active** presentation is watched; a second edited deck waits until it is in front.
 - **Measured on a 182-slide, 14 MB deck in `~/My Drive` (2026-11-04):** saved 63 s after the edit,
   PowerPoint answering 0.7 s late at worst during the save, undo still working after it. On a file
@@ -155,10 +186,15 @@ file, whole minutes at best. So this app does a real save.
 
 ## 💾 Last save in PowerPoint's status bar (`PowerPointSavedBadge`, since 2026-11-05)
 
-White `✓ Saved · 19:21` or amber `● Unsaved · last save 19:21`, centered on PowerPoint's status
-bar, with no pane open; the date appears too when the last save is from another day. It answers
-"is everything saved?" first: an age (`35 min ago`, until 2026-11-05 evening) read as a warning on
-a deck with nothing left to save.
+White `✓ Auto-saved · 19:21` / `✓ Saved by you · 19:21`, or amber `● Unsaved · auto-saved 19:21` /
+`● Unsaved · saved by you 19:21`, centered on PowerPoint's status bar, with no pane open; the date
+appears too when the last save is from another day. It answers "is everything saved?" first: an age
+(`35 min ago`, until 2026-11-05 evening) read as a warning on a deck with nothing left to save.
+
+- **Who saved (2026-11-23):** the file's mtime is looked up in `ScriptedSaveLog` (the same rule as
+  the daemon's `is_scripted_save`): the save this app last made of that deck → *Auto-saved* (AutoSave
+  or SlidesSeen); any other save → *by you*. The log keeps one day, so a save older than that and
+  unknown to it is plain `✓ Saved · 3 Nov 22:43` / `● Unsaved · last save …`.
 
 - **Why not the add-in:** Office.js can't write to the status bar or the title bar, has no save
   event, no last-save time (`PowerPoint.DocumentProperties` has `revisionNumber`, not a date), and

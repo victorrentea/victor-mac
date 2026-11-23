@@ -5,16 +5,41 @@ enum PowerPointSavedBadgePolicy {
     /// PowerPoint's status bar, measured on 16.114.
     static let statusBarHeight: CGFloat = 26
 
-    /// Answers "is everything saved?" first. The time is only a detail: an age like "35 min ago"
-    /// read as a warning on a deck with nothing left to save.
-    static func text(savedAt: Date, unsaved: Bool, now: Date, calendar: Calendar = .current) -> String {
+    /// Who made the save the file on disk comes from.
+    enum SavedBy: Equatable {
+        /// This app: AutoSave or SlidesSeen.
+        case auto
+        /// Victor's ⌘S.
+        case you
+        /// Too long ago for `ScriptedSaveLog` to tell.
+        case unknown
+    }
+
+    /// `entry` is `ScriptedSaveLog`'s for this deck: the last save this app made of it. The
+    /// log keeps a day, so an older save it does not know may have been either.
+    static func savedBy(entry: [String: Any]?, savedAt: Date, now: Date) -> SavedBy {
+        if ScriptedSaveLog.isScripted(entry: entry, mtime: savedAt) { return .auto }
+        return now.timeIntervalSince(savedAt) < ScriptedSaveLog.keptSeconds ? .you : .unknown
+    }
+
+    /// Answers "is everything saved?" first, then by whom (Victor, 2026-11-23). The time is only
+    /// a detail: an age like "35 min ago" read as a warning on a deck with nothing left to save.
+    static func text(savedAt: Date, unsaved: Bool, by: SavedBy = .unknown, now: Date,
+                     calendar: Calendar = .current) -> String {
         let clock = DateFormatter()
         clock.calendar = calendar
         clock.timeZone = calendar.timeZone
         clock.locale = Locale(identifier: "en_GB")
         clock.dateFormat = calendar.isDate(savedAt, inSameDayAs: now) ? "HH:mm" : "d MMM HH:mm"
         let time = clock.string(from: savedAt)
-        return unsaved ? "● Unsaved · last save \(time)" : "✓ Saved · \(time)"
+        switch (unsaved, by) {
+        case (false, .auto): return "✓ Auto-saved · \(time)"
+        case (false, .you): return "✓ Saved by you · \(time)"
+        case (false, .unknown): return "✓ Saved · \(time)"
+        case (true, .auto): return "● Unsaved · auto-saved \(time)"
+        case (true, .you): return "● Unsaved · saved by you \(time)"
+        case (true, .unknown): return "● Unsaved · last save \(time)"
+        }
     }
 
     /// Bottom-left corner of the badge in Cocoa coordinates, centered on PowerPoint's status bar.
@@ -34,6 +59,7 @@ final class PowerPointSavedBadge {
     private struct Reading {
         let savedAt: Date
         let unsaved: Bool
+        let by: PowerPointSavedBadgePolicy.SavedBy
     }
 
     private static let bundleID = "com.microsoft.Powerpoint"
@@ -82,7 +108,9 @@ final class PowerPointSavedBadge {
         // A deck never saved has a bare "Presentation1" for a path: nothing to report.
         if !s.presenting, let path = s.path, path.hasPrefix("/"),
            let savedAt = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date {
-            reading = Reading(savedAt: savedAt, unsaved: !s.saved)
+            let by = PowerPointSavedBadgePolicy.savedBy(entry: ScriptedSaveLog.read()[path],
+                                                        savedAt: savedAt, now: s.at)
+            reading = Reading(savedAt: savedAt, unsaved: !s.saved, by: by)
         }
         DispatchQueue.main.async { [self] in
             self.reading = reading
@@ -96,7 +124,8 @@ final class PowerPointSavedBadge {
             stopFollowing()
             return
         }
-        label.stringValue = PowerPointSavedBadgePolicy.text(savedAt: reading.savedAt, unsaved: reading.unsaved, now: Date())
+        label.stringValue = PowerPointSavedBadgePolicy.text(savedAt: reading.savedAt, unsaved: reading.unsaved,
+                                                            by: reading.by, now: Date())
         label.textColor = reading.unsaved ? .systemOrange : .white
         follow(pid)
         place()

@@ -47,6 +47,48 @@ final class SlidesSeenCloseSaveTests: XCTestCase {
                        SlidesSeenCloseSave.none)
     }
 
+    // MARK: - the save waits for his hands (a ⌘S of his must never meet ours)
+
+    private func step(_ closing: PowerPointSample, waited: TimeInterval = 2, idle: TimeInterval,
+                      uploading: Bool = false) -> SlidesSeenCloseSave.Step {
+        SlidesSeenCloseSave.step(span: span(), now: closing, waited: waited, idle: idle, uploading: uploading)
+    }
+
+    func testTheSaveOnLeavingASlideWaitsForTheHandsToPause() {
+        XCTAssertEqual(step(s(saved: false), idle: 0.3), .wait)
+        XCTAssertEqual(step(s(saved: false), idle: 3), .saveThenSend("/d/a.pptx"))
+    }
+
+    /// He pressed ⌘S himself while we waited: nothing left to save, the slide is reported.
+    func testHisOwnSaveInTheMeantimeLeavesNothingToDo() {
+        XCTAssertEqual(step(s(saved: true), idle: 0.3), .send)
+    }
+
+    func testTheSaveWaitsForDriveToFinishThePreviousUpload() {
+        XCTAssertEqual(step(s(saved: false), idle: 30, uploading: true), .wait)
+    }
+
+    func testBehindAnotherAppItIsSavedAtOnce() {
+        XCTAssertEqual(step(s(saved: false, front: false), idle: 0.1), .saveThenSend("/d/a.pptx"))
+    }
+
+    func testAnotherDeckInFrontAsksPowerPointOnceTheHandsPause() {
+        let other = s(path: "/d/b.pptx", deck: "b.pptx", saved: true)
+        XCTAssertEqual(step(other, idle: 0.3), .wait)
+        XCTAssertEqual(step(other, idle: 5), .askThenSend("/d/a.pptx"))
+    }
+
+    /// Hands that never pause: the slide is reported as it is on disk, never saved under them.
+    func testAfterAMinuteItIsReportedWithoutTheSave() {
+        XCTAssertEqual(step(s(saved: false), waited: 59, idle: 0.3), .wait)
+        XCTAssertEqual(step(s(saved: false), waited: 60, idle: 0.3), .send)
+    }
+
+    func testASlideShowOrPowerPointGoneReportsAtOnce() {
+        XCTAssertEqual(step(s(saved: false, presenting: true), idle: 0.3), .send)
+        XCTAssertEqual(step(.gone(at: t0), idle: 0.3), .send)
+    }
+
     // MARK: - slide_seen payload
 
     func testPayloadCarriesTheContract() throws {

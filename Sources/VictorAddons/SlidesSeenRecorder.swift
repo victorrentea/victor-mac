@@ -87,6 +87,40 @@ enum SlidesSeenCloseSave: Equatable {
         guard s.path == path else { return .saveIfUnsaved(path) }
         return s.presenting || s.saved ? .none : .save(path)
     }
+
+    /// What to do, at one probe, with a slide that was left and not yet reported as `closed`.
+    enum Step: Equatable {
+        /// His hands are on PowerPoint, or Drive still uploads the previous save: ask again
+        /// at the next probe.
+        case wait
+        /// Report it as it is on disk.
+        case send
+        case saveThenSend(String)
+        /// Another deck is active: ask PowerPoint whether the span's own deck needs the save.
+        case askThenSend(String)
+    }
+
+    /// The report is not held back for longer than this: past it, the slide goes out as it
+    /// is on disk and AutoSave picks the edits up later.
+    static let maxWait: TimeInterval = 60
+
+    /// The save on leaving a slide used to run at once — right after the click or key that
+    /// left it, so the ⌘S Victor pressed next met a file Drive was still uploading and was
+    /// refused. It now waits for `ScriptedSaveMoment`; `sample` is the current probe, so a
+    /// ⌘S of his in the meantime turns the save into nothing to do.
+    static func step(span: SlideSpan, now sample: PowerPointSample, waited: TimeInterval,
+                     idle: TimeInterval, uploading: Bool) -> Step {
+        let decision = decide(span: span, closing: sample)
+        if decision == .none { return .send }
+        guard ScriptedSaveMoment.allows(idle: idle, frontmost: sample.frontmost, uploading: uploading) else {
+            return waited >= maxWait ? .send : .wait
+        }
+        switch decision {
+        case .save(let path): return .saveThenSend(path)
+        case .saveIfUnsaved(let path): return .askThenSend(path)
+        case .none: return .send
+        }
+    }
 }
 
 /// 📑 The `slide_seen` message sent to the training-assistant daemon over the local WebSocket:
@@ -153,6 +187,9 @@ final class SlidesSeenRecorder {
     private var lastSnapshot: [String: (Int, Date, String)] = [:]
     /// The snapshot taken when the current span qualified, written with it on close.
     private var pendingSnapshot: String?
+    /// Slides left and not yet reported as `closed`, oldest first: their deck has unsaved
+    /// edits and the save waits for his hands to pause (`SlidesSeenCloseSave.step`).
+    private var leftSlides: [(span: SlideSpan, snapshot: String?, since: Date)] = []
     private var reindex = SpotlightReindexPolicy()
     private var lastPrune = Date()
 
@@ -186,6 +223,7 @@ final class SlidesSeenRecorder {
     func consume(_ sample: PowerPointSample) {
         queue.async { [self] in
             if let path = reindex.consume(sample) { Self.spotlightImport(path) }
+            let idle = ScriptedSaveMoment.secondsSinceLastInput()
             for action in policy.consume(sample) {
                 switch action {
                 case .qualified(let span):
@@ -193,24 +231,48 @@ final class SlidesSeenRecorder {
                     // A deck never saved has no file to copy, and must not be saved behind his back.
                     if let path = span.path, PowerPointDeck.hasFile(path) {
                         // Unsaved edits are not on disk, and the copy is taken from disk: save first.
-                        // Victor asked for it (2026-10-29), knowing Google Drive sometimes refuses a save.
-                        if !sample.saved { PowerPointDeck.save(path, reason: "SlidesSeen") }
+                        // Victor asked for it (2026-10-29) — but not under his hands: a slide he is
+                        // editing at its 7th second is saved when he leaves it (`reportLeftSlides`).
+                        if !sample.saved, ScriptedSaveMoment.allows(idle: idle, frontmost: sample.frontmost,
+                                                                    uploading: PowerPointDeck.uploading(path)) {
+                            PowerPointDeck.save(path, reason: "SlidesSeen")
+                        }
                         pendingSnapshot = snapshot(path)
                     }
                     send(.qualified, span)
                 case .closed(let span):
-                    // Edits made on the slide after the 7 s save: on disk before the daemon reads it.
-                    switch SlidesSeenCloseSave.decide(span: span, closing: sample) {
-                    case .none: break
-                    case .save(let path): PowerPointDeck.save(path, reason: "SlidesSeen")
-                    case .saveIfUnsaved(let path):
-                        if PowerPointDeck.needsSave(path) { PowerPointDeck.save(path, reason: "SlidesSeen") }
-                    }
-                    append(span, snapshot: pendingSnapshot)
+                    leftSlides.append((span, pendingSnapshot, sample.at))
                     pendingSnapshot = nil
-                    send(.closed, span)
                 }
             }
+            reportLeftSlides(sample, idle: idle)
+        }
+    }
+
+    /// Edits made on a slide after its 7 s save go to disk before the daemon reads it — once
+    /// his hands have paused. In the order the slides were left; one save covers them all.
+    private func reportLeftSlides(_ sample: PowerPointSample, idle: TimeInterval) {
+        var saved: Set<String> = []
+        while let left = leftSlides.first {
+            let path = left.span.path ?? ""
+            if !saved.contains(path) {
+                let step = SlidesSeenCloseSave.step(
+                    span: left.span, now: sample, waited: sample.at.timeIntervalSince(left.since),
+                    idle: idle, uploading: PowerPointDeck.uploading(path))
+                switch step {
+                case .wait: return
+                case .send: break
+                case .saveThenSend(let path):
+                    PowerPointDeck.save(path, reason: "SlidesSeen")
+                    saved.insert(path)
+                case .askThenSend(let path):
+                    if PowerPointDeck.needsSave(path) { PowerPointDeck.save(path, reason: "SlidesSeen") }
+                    saved.insert(path)
+                }
+            }
+            append(left.span, snapshot: left.snapshot)
+            send(.closed, left.span)
+            leftSlides.removeFirst()
         }
     }
 
