@@ -39,6 +39,12 @@ enum BreakTimerModel {
     /// break — it is not itself a break.
     static let untilBreakTitle = "UNTIL BREAK"
 
+    /// Size of the ☕-started "UNTIL BREAK" watch, as a fraction of a menu-started
+    /// break's window. A quarter (was a half until 2026-11-23): it is a reminder in
+    /// the corner, not the break itself, and at half size it still took too much of
+    /// the projected retina.
+    static let untilBreakScale: CGFloat = 0.25
+
     /// Whether closing a timer with this title means "a break just ended", i.e.
     /// whether it should (re)start the menu's "⏱️ Resumed Xm ago" clock and the
     /// break reminder. An "UNTIL BREAK" countdown reaching zero is the moment the

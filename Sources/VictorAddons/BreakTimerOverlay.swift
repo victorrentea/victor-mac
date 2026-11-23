@@ -965,7 +965,7 @@ final class BreakTimerController {
         // ~38% of screen width (was 29% — the room could not read it from the
         // back), tucked into the top-right corner with small gaps (hugs the
         // edges). `scale` shrinks a fresh window — the ☕-triggered "until
-        // break" timer opens at 50%.
+        // break" timer opens at `BreakTimerModel.untilBreakScale`.
         let w = f.width * 0.38 * max(0.1, scale)
         let h = w / aspect
         switch corner {

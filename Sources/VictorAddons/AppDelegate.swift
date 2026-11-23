@@ -421,7 +421,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                     overlayInfo("☕ popped → starting 10-min UNTIL BREAK timer")
                     self.breakTimer.start(minutes: 10,
                                           title: BreakTimerModel.untilBreakTitle,
-                                          sizeScale: 0.5,
+                                          sizeScale: BreakTimerModel.untilBreakScale,
                                           zoomFrom: at)
                 }
             default:
@@ -1309,8 +1309,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             DispatchQueue.main.async { self?.startBreak(minutes: minutes) }
         }
         tabletServer?.onTestBreakUntil = { [weak self] in
-            // Same overlay a floating-☕ click produces: half-size "UNTIL BREAK".
-            DispatchQueue.main.async { self?.breakTimer.start(minutes: 10, title: BreakTimerModel.untilBreakTitle, sizeScale: 0.5) }
+            // Same overlay a floating-☕ click produces: quarter-size "UNTIL BREAK".
+            DispatchQueue.main.async { self?.breakTimer.start(minutes: 10, title: BreakTimerModel.untilBreakTitle, sizeScale: BreakTimerModel.untilBreakScale) }
         }
         tabletServer?.onTestBreakClose = { [weak self] in
             DispatchQueue.main.async { self?.breakTimer.close() }
