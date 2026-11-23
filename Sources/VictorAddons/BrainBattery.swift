@@ -276,6 +276,13 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
     private var blinkTimer: Timer?
     private var blinkOn = true
     private(set) var state: BrainEnergy.State = .idle
+    /// The Extras tick (🧠 Show Brain Battery).
+    private var enabled = false
+    /// ☕ `UntilBreakCountdown` borrows this slot while it counts: the time to
+    /// the break sits exactly where the battery was, and the battery comes back
+    /// at zero. Shown even with the battery ticked off.
+    private var countdownTitle: NSAttributedString?
+    private var countdownMenu: NSMenu?
 
     init(breakEndedAt: @escaping () -> Date?) {
         self.breakEndedAt = breakEndedAt
@@ -296,6 +303,26 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
 
     /// Shows or hides the item; called at launch and from the Extras tick.
     func setVisible(_ visible: Bool) {
+        enabled = visible
+        syncItem()
+    }
+
+    /// ☕ Lend the slot to the countdown (`title` non-nil) or take it back (nil).
+    func showCountdown(_ title: NSAttributedString?, menu: NSMenu) {
+        let modeChanged = (title == nil) != (countdownTitle == nil)
+        countdownTitle = title
+        countdownMenu = menu
+        if modeChanged { syncItem() } else { draw() }
+    }
+
+    /// Where the slot is on screen (global coordinates), for the ☕ −1 to fly at.
+    var slotCenterGlobal: CGPoint? {
+        guard let item = statusItem, item.isVisible, let w = item.button?.window else { return nil }
+        return CGPoint(x: w.frame.midX, y: w.frame.midY)
+    }
+
+    private func syncItem() {
+        let visible = enabled || countdownTitle != nil
         if visible, statusItem == nil {
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             item.menu = menu
@@ -308,6 +335,7 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
             NSStatusBar.system.removeStatusItem(item)
             statusItem = nil
         }
+        refresh()
     }
 
     func menuWillOpen(_ menu: NSMenu) { refresh() }
@@ -337,14 +365,25 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         }
         summary = BrainEnergy.lines(state, reference: reference, now: now)
         for (row, line) in zip(statusRows, summary) { row.title = line }
-        statusItem?.isVisible = BrainEnergy.isShown(state, reference: reference,
-                                                    hiddenAt: BrainBatterySettings.hiddenAt)
+        statusItem?.isVisible = countdownTitle != nil
+            || (enabled && BrainEnergy.isShown(state, reference: reference,
+                                               hiddenAt: BrainBatterySettings.hiddenAt))
         draw()
     }
 
     private func draw() {
-        statusItem?.button?.image = BrainBatteryIcon.image(for: state, blinkOn: blinkOn)
-        statusItem?.button?.toolTip = summary.joined(separator: "\n")
+        guard let item = statusItem else { return }
+        if let countdownTitle {
+            item.button?.image = nil
+            item.button?.attributedTitle = countdownTitle
+            item.button?.toolTip = "Time until the break the room voted ☕ — each ☕ takes a minute off"
+            item.menu = countdownMenu
+            return
+        }
+        item.button?.title = ""
+        item.menu = menu
+        item.button?.image = BrainBatteryIcon.image(for: state, blinkOn: blinkOn)
+        item.button?.toolTip = summary.joined(separator: "\n")
     }
 
     /// Full again, as of now: **Refill now**.

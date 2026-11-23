@@ -90,6 +90,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var walkieDictSync: WalkieDictSync?
     private var tartVMIndicator: TartVMIndicator?
     private var brainBattery: BrainBatteryIndicator?
+    /// ☕ The voted countdown to the break, in the 🧠 slot of the menu bar.
+    private let untilBreak = UntilBreakCountdown()
     /// Drives Whisper purely off the power source: on AC → transcribe, on
     /// battery → pause. No schedule, no manual start/stop.
     private var transcriptionController: TranscriptionController?
@@ -397,7 +399,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             case "coffee-popped":
                 let at = CGPoint(x: Double(params["x"] ?? "") ?? NSEvent.mouseLocation.x,
                                  y: Double(params["y"] ?? "") ?? NSEvent.mouseLocation.y)
-                if self.breakTimer.isShowing {
+                if !self.breakTimer.isShowing, self.untilBreak.isRunning {
+                    // ☕ The countdown to the break is in the menu bar: the −1
+                    // flies up to it, same rules as it had on the floating watch.
+                    overlayInfo("☕ popped → −1m flying to the menu bar countdown")
+                    if self.untilBreak.coffeePopWins(minutesInFlight: MinuteToken.shared.minutesInFlight) {
+                        overlayInfo("☕ this −1 empties UNTIL BREAK → fireworks armed")
+                        EffectsProxy.fire("/effect/coffee/armed")
+                    }
+                    self.flyMinuteToUntilBreak(from: at)
+                } else if self.breakTimer.isShowing {
                     // Each explosion sends a big red −1 floating to the clock, and
                     // the minute comes off WHEN IT LANDS (keep popping coffees to
                     // keep pulling the break closer). Deferring the deduction to the
@@ -414,15 +425,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                     }
                     self.flyMinuteToBreakTimer(from: at)
                 } else {
-                    // The first explosion STARTS the 10-min "UNTIL BREAK" timer,
-                    // which grows into its corner out of that very blast over 2 s;
-                    // coffees that pop while it is still flying in find it showing
-                    // and send their minute after it.
-                    overlayInfo("☕ popped → starting 10-min UNTIL BREAK timer")
-                    self.breakTimer.start(minutes: 10,
-                                          title: BreakTimerModel.untilBreakTitle,
-                                          sizeScale: BreakTimerModel.untilBreakScale,
-                                          zoomFrom: at)
+                    // The first explosion STARTS the 10-min countdown to the
+                    // break — in the menu bar since 2026-11-23, in the 🧠 slot,
+                    // so the floating watch is only ever the break itself.
+                    overlayInfo("☕ popped → starting the 10-min UNTIL BREAK countdown in the menu bar")
+                    self.untilBreak.start()
                 }
             default:
                 overlayInfo("Unknown /effects/event type: \(type)")
@@ -1309,8 +1316,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             DispatchQueue.main.async { self?.startBreak(minutes: minutes) }
         }
         tabletServer?.onTestBreakUntil = { [weak self] in
-            // Same overlay a floating-☕ click produces: quarter-size "UNTIL BREAK".
-            DispatchQueue.main.async { self?.breakTimer.start(minutes: 10, title: BreakTimerModel.untilBreakTitle, sizeScale: BreakTimerModel.untilBreakScale) }
+            // What a first floating-☕ pop does: the menu-bar countdown.
+            DispatchQueue.main.async { self?.untilBreak.start() }
         }
         tabletServer?.onTestBreakClose = { [weak self] in
             DispatchQueue.main.async { self?.breakTimer.close() }
@@ -1802,6 +1809,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         brainBattery.setVisible(BrainBatterySettings.isEnabled)
         menuBarManager.onToggleBrainBattery = { [weak brainBattery] on in brainBattery?.setVisible(on) }
         self.brainBattery = brainBattery
+        untilBreak.render = { [weak self, weak brainBattery] title in
+            guard let self else { return }
+            brainBattery?.showCountdown(title, menu: self.untilBreak.menu)
+        }
+        // Zero: a gong, and the ☕️ Break menu opens to pick the break's length —
+        // the usual watch follows from there.
+        untilBreak.onExpired = { [weak self] in
+            EffectTile.play(BreakTimerController.gongTile, effect: "gong") {
+                AddonSounds.shared.playOverlapping(BreakTimerController.gongTile)
+            }
+            self?.menuBarManager.openBreakMenu()
+        }
+        untilBreak.resumeIfPersisted()
 
         let portKiller = PortKiller()
         self.portKiller = portKiller
@@ -2835,6 +2855,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             })
     }
 
+    /// The same −1, flown to the ☕ countdown in the menu bar instead of the watch.
+    private func flyMinuteToUntilBreak(from point: CGPoint) {
+        MinuteToken.shared.fly(
+            fromGlobal: point,
+            targetGlobal: { [weak self] in
+                guard let self, self.untilBreak.isRunning else { return nil }
+                return self.brainBattery?.slotCenterGlobal
+            },
+            onArrival: { [weak self] in
+                guard let self, self.untilBreak.isRunning else { return }
+                let outcome = self.untilBreak.coffeeMinute
+                guard outcome != .ignore else { return }
+                if outcome == .subtractAndWin {
+                    overlayInfo("☕ −1 took UNTIL BREAK to zero → break won")
+                    EffectsProxy.fire("/effect/coffee/won")
+                }
+                self.untilBreak.subtractMinute()
+            })
+    }
+
     // MARK: - Break reminder
 
     /// Subtle bottom-left nudge 1h 15m after the most recent resume, prompting
@@ -3462,6 +3502,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     /// armed; anything that does not qualify clears it, so a short coffee break
     /// can never cash in the lunch break's photo.
     private func startBreak(minutes: Int) {
+        untilBreak.cancel()      // the break itself is here: the countdown to it is moot
         breakTimer.start(minutes: minutes)
         if daemonConnected, GroupPhotoBreakPolicy.shouldPrompt(breakMinutes: minutes, at: Date()) {
             promptGroupPhoto()
