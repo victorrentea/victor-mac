@@ -111,9 +111,11 @@ enum BrainEnergy {
         case .idle:
             return "no break yet today"
         case let .draining(level, remaining):
-            return "left: ~\(spoken(remaining)) (\(Int((level * 100).rounded()))%)"
+            // 🔋 while there is charge to spend, 🪫 once it is in the red (Victor, 2026-11-23).
+            let icon = level > 0.15 ? "🔋" : "🪫"   // the red zone of `charge`
+            return "\(icon) left: ~\(spoken(remaining)) (\(Int((level * 100).rounded()))%)"
         case let .depleted(overdue):
-            return "depleted: \(ago(overdue))"
+            return "☢️ depleted: \(ago(overdue))"
         }
     }
 
@@ -122,13 +124,13 @@ enum BrainEnergy {
     static func lines(_ state: State, reference: Date?, now: Date) -> [String] {
         let started: String
         if let reference, reference > now {
-            started = "starts in ~\(spoken(reference.timeIntervalSince(now)))"
+            started = "🕒 starts in ~\(spoken(reference.timeIntervalSince(now)))"
         } else if let reference {
-            started = "started: \(ago(max(0, now.timeIntervalSince(reference))))"
+            started = "🕒 started: \(ago(max(0, now.timeIntervalSince(reference))))"
         } else {
-            started = "started: —"
+            started = "🕒 started: —"
         }
-        return ["Brain🧠 Stamina", describe(state), started]
+        return ["🧠 Brain Stamina", describe(state), started]
     }
 
     /// "40 min ago", "1h 5m ago", "just now" — for how long ago something was.
@@ -293,9 +295,11 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         }
         menu.addItem(.separator())
         let refill = NSMenuItem(title: "Refill now", action: #selector(refillNow), keyEquivalent: "")
+        refill.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refill")
         refill.target = self
         menu.addItem(refill)
         let hide = NSMenuItem(title: "Hide until the next break", action: #selector(hideNow), keyEquivalent: "")
+        hide.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Hide")
         hide.target = self
         menu.addItem(hide)
         menu.delegate = self
