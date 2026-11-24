@@ -1345,7 +1345,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             return self?.breakTimer.stateJSON() ?? "{\"error\":\"break timer unavailable\"}"
         }
         tabletServer?.onTestBreakState = { [weak self] in
-            self?.breakTimer.stateJSON() ?? "{\"error\":\"break timer unavailable\"}"
+            guard let self else { return "{\"error\":\"break timer unavailable\"}" }
+            // `untilBreak`: the ☕ countdown in the menu bar is running. The
+            // effects app reads it to pour without the espresso machine — the
+            // coffee was brewed by the first cup (2026-11-24).
+            return BreakTimerModel.withUntilBreak(self.breakTimer.stateJSON(),
+                                                  running: self.untilBreak.isRunning)
         }
         // /test/stopwatch/{start,pause,close,state} — the ⏱️ Timer, headless.
         // Same main-thread situation as the pair above; each answers the state after.

@@ -201,4 +201,18 @@ final class BreakTimerModelTests: XCTestCase {
         XCTAssertEqual(BreakTimerModel.coffeeMinute(title: BreakTimerModel.untilBreakTitle, remaining: 0), .ignore)
         XCTAssertEqual(BreakTimerModel.coffeeMinute(title: "BREAK", remaining: 0), .ignore)
     }
+
+    // MARK: - /test/break/state carries the ☕ menu-bar countdown
+
+    func testStateJsonGetsUntilBreakSpliced() {
+        XCTAssertEqual(BreakTimerModel.withUntilBreak("{\"showing\":false,\"blackout\":false}", running: true),
+                       "{\"showing\":false,\"blackout\":false,\"untilBreak\":true}")
+        XCTAssertEqual(BreakTimerModel.withUntilBreak("{\"showing\":true}", running: false),
+                       "{\"showing\":true,\"untilBreak\":false}")
+    }
+
+    func testErrorJsonIsLeftAlone() {
+        let err = "{\"error\":\"break timer unavailable\"}"
+        XCTAssertEqual(BreakTimerModel.withUntilBreak(err, running: true), err)
+    }
 }

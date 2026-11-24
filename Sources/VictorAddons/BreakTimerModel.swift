@@ -90,6 +90,14 @@ enum BreakTimerModel {
         title == untilBreakTitle && remaining - 60 * minutesInFlight <= 60
     }
 
+    /// `/test/break/state` plus `"untilBreak":true|false` — whether the ☕
+    /// countdown in the menu bar runs. Spliced before the closing brace of the
+    /// watch's own JSON, so every field the scripts already assert stays put.
+    static func withUntilBreak(_ json: String, running: Bool) -> String {
+        guard json.hasSuffix("}"), !json.contains("\"error\"") else { return json }
+        return String(json.dropLast()) + ",\"untilBreak\":\(running)}"
+    }
+
     /// Format remaining seconds as `MM:SS`. Minutes are NOT capped at 59 — one
     /// hour shows `60:00` to keep the two-group "watch" look. Negative values
     /// clamp to `00:00`.

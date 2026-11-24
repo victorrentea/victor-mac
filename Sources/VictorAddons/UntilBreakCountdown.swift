@@ -80,9 +80,17 @@ final class UntilBreakCountdown {
                                       remaining: remaining, minutesInFlight: minutesInFlight)
     }
 
-    /// A −1 landed: a minute off, the slot flashes red.
+    /// Heard each time a −1 lands on the menu-bar countdown (2026-11-24, Victor:
+    /// *"un sunet genul yes, când se scade un minut"*). Bundled in this app's
+    /// `Resources` (`AddonSounds.soundURL` falls back there), generated once with
+    /// Fish Audio, trimmed and normalised to −18 LUFS, ~0.8 s.
+    static let minuteLandedSound = "coffee_yes.mp3"
+
+    /// A −1 landed: a minute off, the slot flashes red, a "yes!" is heard.
     func subtractMinute() {
         guard isRunning, let d = deadline else { return }
+        // Overlapping: a cluster of cups lands several minutes within a second.
+        AddonSounds.shared.playOverlapping(Self.minuteLandedSound, volume: 0.8)
         deadline = d.addingTimeInterval(-60)
         flashUntil = Date().addingTimeInterval(Self.flashSeconds)
         update()
