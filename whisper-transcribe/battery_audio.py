@@ -25,6 +25,7 @@ import queue
 import re
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -46,6 +47,60 @@ MARKER = "--- 🔋 from battery audio ---"
 
 
 # ── Capture side ─────────────────────────────────────────────────────────────
+class VoiceSentinel:
+    """👂 After `Stop ❌` on battery: is somebody talking around the Mac?
+
+    Pure loudness, no words. A block counts as voiced when its RMS clears
+    **both** the live gate's own threshold (the one that decides what gets
+    transcribed) **and** twice the room's noise floor — the 20th percentile of
+    the last `window_sec` of blocks. A plane, a train or a fan is loud but
+    *steady*: it lifts the floor with it, so it never clears ×2 of itself.
+    Speech is syllables and pauses: the pauses keep the floor down and the
+    syllables stand above it.
+
+    It trips once at least `need_sec` of voiced blocks fall inside the last
+    `window_sec` — 30 s out of 2 min by default, so a cough, a door or one
+    sentence to a colleague does not resume anything, a meeting does.
+
+    Victor, 2026-11-24, after a `Stop ❌` pressed at 12:40 cost the whole
+    12:30–13:30 meeting: *"dacă auzi vorbă în jurul tău … să nu ratăm cazul
+    când intră într-o ședință pe neașteptate după ce am dat dismiss"*; and on
+    the plane case: *"zgomotul de fond … declanșează înregistrarea vocilor care
+    nu sunt voce"*.
+    """
+
+    FLOOR_PERCENTILE = 20
+    FLOOR_FACTOR = 2.0          # ≈ +6 dB over the floor
+    FLOOR_MIN_BLOCKS = 100      # 10 s of history before the floor is trusted
+
+    def __init__(self, need_sec: float = 30.0, window_sec: float = 120.0):
+        self.need_sec = need_sec
+        self.window_sec = window_sec
+        self._voiced: deque[tuple[float, float]] = deque()  # (at, seconds)
+        self._total = 0.0
+        self._levels: deque[tuple[float, float]] = deque()  # (at, rms)
+        self.floor = 0.0
+
+    def is_voiced(self, rms: float, threshold: float) -> bool:
+        return rms >= threshold and rms >= self.floor * self.FLOOR_FACTOR
+
+    def feed(self, at: float, seconds: float, rms: float, threshold: float) -> bool:
+        self._levels.append((at, rms))
+        while self._levels and self._levels[0][0] <= at - self.window_sec:
+            self._levels.popleft()
+        if len(self._levels) >= self.FLOOR_MIN_BLOCKS:
+            self.floor = float(np.percentile([r for _, r in self._levels], self.FLOOR_PERCENTILE))
+        else:
+            # No history yet: assume the worst — nothing counts until the floor is known.
+            self.floor = float("inf")
+        if self.is_voiced(rms, threshold):
+            self._voiced.append((at, seconds))
+            self._total += seconds
+        while self._voiced and self._voiced[0][0] <= at - self.window_sec:
+            self._total -= self._voiced.popleft()[1]
+        return self._total >= self.need_sec - 1e-6
+
+
 class SessionRecorder:
     """One channel's battery audio, off the audio thread.
 
@@ -57,7 +112,16 @@ class SessionRecorder:
     live path would have and stamp each line with the minute it was spoken.
     """
 
-    def __init__(self, out_dir: Path, label: str, log=None, queue_blocks: int = 600):
+    def __init__(self, out_dir: Path, label: str, log=None, queue_blocks: int = 600,
+                 listening: bool = False, ring_sec: float = 600.0,
+                 sentinel: VoiceSentinel | None = None, on_wake=None):
+        """`listening=True` is the 👂 sentinel after `Stop ❌`: nothing reaches
+        the disk, the last `ring_sec` stay in memory (int16, ~19 MB per
+        channel for 10 min), and `sentinel` listens. When it trips, `on_wake`
+        is called once with this channel's label; whoever owns the recorders
+        then calls `record()` on every one of them, which writes the ring out
+        — the minutes before the trip are kept, stamped as spoken — and goes
+        on recording as if `Stop ❌` had never been pressed."""
         self._dir = out_dir
         self._label = re.sub(r"[^A-Za-z0-9]+", "-", label).strip("-") or "channel"
         self._log = log
@@ -69,6 +133,12 @@ class SessionRecorder:
         self._samples = 0
         self._device: str | None = None
         self.dropped = 0
+        self._listening = listening
+        self._record = threading.Event()
+        self._ring: deque = deque(maxlen=max(1, int(ring_sec * 10)))  # 100 ms blocks
+        self._sentinel = sentinel if sentinel is not None else VoiceSentinel()
+        self._on_wake = on_wake
+        self._woke = False
         self._thread = threading.Thread(
             target=self._supervised, daemon=True, name=f"batt-{self._label}"
         )
@@ -94,13 +164,53 @@ class SessionRecorder:
                 self._say("error", f"🔋 battery recorder crashed, restarting: {exc!r}")
                 time.sleep(1)
 
+    @property
+    def listening(self) -> bool:
+        return self._listening
+
+    def record(self):
+        """Leave the sentinel: the ring goes to disk, then everything after it.
+        Safe from any thread; the writer thread does the flush."""
+        self._record.set()
+
     def _loop(self):
         while self._running or not self._q.empty():
+            if self._listening and self._record.is_set():
+                self._flush_ring()
             try:
                 at, block, device, threshold = self._q.get(timeout=0.5)
             except queue.Empty:
                 continue
-            self._append(at, block, device, threshold)
+            if self._listening:
+                self._listen(at, block, device, threshold)
+            else:
+                self._append(at, block, device, threshold)
+        # A wake right before a stop still owes the disk its ring. Without a
+        # wake the ring is simply dropped: nobody spoke, nothing to keep.
+        if self._listening and self._record.is_set():
+            self._flush_ring()
+
+    def _listen(self, at: float, block: np.ndarray, device: str, threshold: float):
+        self._ring.append((at, _to_int16(block), device, threshold))
+        rms = float(np.sqrt(np.mean(block**2))) if len(block) else 0.0
+        tripped = self._sentinel.feed(at, len(block) / SAMPLE_RATE, rms, threshold)
+        if tripped and not self._woke:
+            self._woke = True
+            self._say("info", f"👂 {self._label}: voice for {self._sentinel.need_sec:.0f}s "
+                              f"in {self._sentinel.window_sec:.0f}s — recording again")
+            if self._on_wake is not None:
+                try:
+                    self._on_wake(self._label)
+                except Exception as exc:  # noqa: BLE001
+                    self._say("error", f"👂 wake callback failed: {exc!r}")
+
+    def _flush_ring(self):
+        kept = len(self._ring)
+        while self._ring:
+            at, pcm, device, threshold = self._ring.popleft()
+            self._append(at, pcm, device, threshold)
+        self._listening = False
+        self._say("info", f"👂 {self._label}: {kept / 10:.0f}s kept from before the wake")
 
     def _append(self, at: float, block: np.ndarray, device: str, threshold: float):
         # `at` is when the callback ran, i.e. when the block *ended*.
@@ -112,8 +222,8 @@ class SessionRecorder:
             or abs(block_start - expected) > GAP_SEC
         ):
             self._open(block_start, device, threshold)
-        clipped = np.clip(block, -1.0, 1.0)
-        self._fh.write((clipped * 32767).astype(np.int16).tobytes())
+        pcm = block if block.dtype == np.int16 else _to_int16(block)
+        self._fh.write(pcm.tobytes())
         self._fh.flush()
         self._samples += len(block)
 
@@ -142,6 +252,10 @@ class SessionRecorder:
         self._running = False
         self._thread.join(timeout)
         self._close()
+
+
+def _to_int16(block: np.ndarray) -> np.ndarray:
+    return (np.clip(block, -1.0, 1.0) * 32767).astype(np.int16)
 
 
 # ── Pure helpers ─────────────────────────────────────────────────────────────

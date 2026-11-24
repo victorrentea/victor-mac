@@ -882,6 +882,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             // 🔋 On battery: microphones to disk, no model. The full process
             // that starts on AC transcribes what was recorded.
             if mode == .captureOnly { env["WHISPER_CAPTURE_ONLY"] = "1" }
+            // 👂 After Stop ❌: capture-only that keeps 10 min in memory and
+            // records again on its own when it hears voice or a call.
+            if mode == .sentinel { env["WHISPER_CAPTURE_ONLY"] = "1"; env["WHISPER_SENTINEL"] = "1" }
             if let folder = self?.transcriptionFolder {
                 env["TRANSCRIPTION_FOLDER"] = folder.path
                 env["WHISPER_PREFERRED_SOURCE_FILE"] = folder.appendingPathComponent(".preferred-me-source").path
@@ -911,12 +914,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             self?.menuBarManager.setTranscriptionPowerState(state)
             self?.batteryRecordingNotice.update(state)
         }
-        menuBarManager.onToggleBatteryRecording = { [weak controller] in
-            guard let controller else { return }
-            controller.setBatteryRecording(!controller.batteryRecordingEnabled)
+        menuBarManager.onBatteryChoice = { [weak controller] choice in
+            controller?.setBatteryChoice(choice)
         }
+        // The pill's Stop ❌ only stops the disk: whisper keeps listening and
+        // records again on voice (2026-11-24). `off` is the menu's alone.
         batteryRecordingNotice.onStop = { [weak controller] in
-            controller?.setBatteryRecording(false)
+            controller?.setBatteryChoice(.listen)
+        }
+        controller.wakeSentinel = { [weak whisperManager] in
+            whisperManager?.wakeSentinel() ?? false
+        }
+        whisperManager.onSentinelWake = { [weak controller] why in
+            controller?.sentinelWoke(why)
+        }
+        controller.onSentinelWake = { [weak self] why in
+            self?.batteryRecordingNotice.resumedOnVoice(why)
         }
         self.transcriptionController = controller
 
@@ -988,10 +1001,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 case "auto": PowerMonitor.testOverride = nil; pm.powerSourceChanged()
                 default: break
                 }
-                if let r = q["record"] { controller.setBatteryRecording(r == "1") }
+                if let r = q["record"] { controller.setBatteryChoice(r == "1" ? .record : .off) }
+                if q["listen"] == "1" { controller.setBatteryChoice(.listen) }
+                if let why = q["wake"] { controller.sentinelWoke(why.isEmpty ? "test" : why) }
                 if q["snooze"] == "1" { self.batteryRecordingNotice.snoozeNow() }
                 if q["stop"] == "1" { self.batteryRecordingNotice.stopNow() }
-                let mode = controller.runningMode.map { $0 == .full ? "\"full\"" : "\"capture-only\"" } ?? "null"
+                let mode = controller.runningMode.map {
+                    $0 == .full ? "\"full\"" : $0 == .sentinel ? "\"sentinel\"" : "\"capture-only\""
+                } ?? "null"
                 return "{\"on_ac\":\(PowerMonitor.isOnAC()),\"forced\":\(PowerMonitor.testOverride.map { String($0) } ?? "null"),"
                     + "\"mode\":\(mode),\"whisper_running\":\(self.whisperManager?.isRunning == true),"
                     + "\"notice\":\(self.batteryRecordingNotice.stateJSON())}"

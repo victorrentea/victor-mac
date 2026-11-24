@@ -198,3 +198,82 @@ def test_backlog_marks_the_call_channel_as_audience_and_noise_as_nobody(tmp_path
         is_garbage=lambda t: False, me_label="Victor", log=_Log()).drain_once()
     assert written == {"2026-11-03": [
         "[10:15] 👥 o întrebare de la client", "[10:16] Somente value é integral"]}
+
+
+# ── 👂 VoiceSentinel: after Stop ❌, resume when somebody talks ──────────────
+def _speech_levels(sec: float, loud: float = 0.2, quiet: float = 0.01):
+    """Syllables and pauses: 3 loud blocks, 2 quiet, at 100 ms a block."""
+    return [loud if i % 5 < 3 else quiet for i in range(int(sec * 10))]
+
+
+def _feed(sentinel, levels, threshold=0.02, t0=0.0):
+    tripped_at = None
+    for i, rms in enumerate(levels):
+        at = t0 + (i + 1) * 0.1
+        if sentinel.feed(at, 0.1, rms, threshold) and tripped_at is None:
+            tripped_at = at
+    return tripped_at
+
+
+def test_a_meeting_trips_the_sentinel_within_a_minute_and_a_half():
+    at = _feed(ba.VoiceSentinel(), _speech_levels(120))
+    assert at is not None and at < 90
+
+
+def test_one_sentence_to_a_colleague_does_not():
+    levels = [0.001] * 300 + _speech_levels(10) + [0.001] * 900
+    assert _feed(ba.VoiceSentinel(), levels) is None
+
+
+def test_a_plane_engine_never_trips_it_however_loud():
+    """Steady noise lifts the floor with it: nothing stands ×2 above itself."""
+    rng = np.random.default_rng(1)
+    levels = list(0.3 * (1 + 0.15 * rng.standard_normal(20 * 60 * 10)))  # 20 min
+    assert _feed(ba.VoiceSentinel(), levels) is None
+
+
+def test_people_talking_on_the_plane_still_do():
+    rng = np.random.default_rng(2)
+    noise = 0.05 * (1 + 0.15 * rng.standard_normal(1200))
+    speech = _speech_levels(120, loud=0.25, quiet=0.0)
+    levels = [max(n, s) for n, s in zip(noise, speech)]
+    assert _feed(ba.VoiceSentinel(), levels) is not None
+
+
+def test_nothing_counts_before_the_floor_is_known():
+    s = ba.VoiceSentinel(need_sec=0.5)
+    assert _feed(s, [0.5] * 50) is None  # 5 s: no floor yet
+
+
+# ── 👂 SessionRecorder listening: memory only, until record() ───────────────
+def test_listening_writes_nothing_then_record_keeps_the_minutes_before(tmp_path):
+    woke = []
+    rec = ba.SessionRecorder(tmp_path, "Victor", listening=True, ring_sec=60,
+                             sentinel=ba.VoiceSentinel(need_sec=3, window_sec=20),
+                             on_wake=woke.append)
+    t0 = datetime(2026, 11, 24, 12, 40, 0).timestamp()
+    levels = [0.001] * 150 + _speech_levels(10)
+    for i, amp in enumerate(levels):
+        rec.write(_tone(0.1, amp), "DJI", 0.02, at=t0 + (i + 1) * 0.1)
+    assert _wait(lambda: woke == ["Victor"])
+    assert list(tmp_path.glob("*.pcm")) == [], "listening never touches the disk"
+    rec.record()
+    for i in range(10):  # and on it goes, after the wake
+        rec.write(_tone(0.1), "DJI", 0.02, at=t0 + (len(levels) + i + 1) * 0.1)
+    rec.stop()
+    pcms = list(tmp_path.glob("*.pcm"))
+    assert [p.name for p in pcms] == ["2026-11-24T12-40-00.000-Victor.s16le16k.pcm"], \
+        "the ring starts the file at its own first sample, the minute it was spoken"
+    assert pcms[0].stat().st_size == (len(levels) + 10) * BLOCK * 2
+
+
+def test_the_ring_forgets_what_is_older_than_ring_sec(tmp_path):
+    rec = ba.SessionRecorder(tmp_path, "Victor", listening=True, ring_sec=2)
+    t0 = datetime(2026, 11, 24, 12, 0, 0).timestamp()
+    for i in range(50):
+        rec.write(_tone(0.1, 0.001), "DJI", 0.02, at=t0 + (i + 1) * 0.1)
+    assert _wait(lambda: rec._q.empty())
+    rec.record()
+    rec.stop()
+    pcms = list(tmp_path.glob("*.pcm"))
+    assert len(pcms) == 1 and pcms[0].stat().st_size == 20 * BLOCK * 2

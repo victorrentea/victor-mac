@@ -12,6 +12,9 @@ class WhisperProcessManager {
     /// channel — whisper's own per-block RMS gate, forwarded. Feeds
     /// `TrainingEndSequence`; deliberately NOT logged, unlike every other line.
     var onVoice: ((String) -> Void)?
+    /// 👂 `SENTINEL_WAKE:<why>` — the listener after `Stop ❌` heard voice
+    /// (`voice:<channel>`), saw a call (`call`) or was told to (`menu`).
+    var onSentinelWake: ((String) -> Void)?
     /// The DJI receiver has delivered exact zeros for 20 s — its transmitter is
     /// gone (`dead_input.py`). Carries when the zeros BEGAN. Once per dead run.
     var onDigitalSilence: ((Date) -> Void)?
@@ -99,6 +102,9 @@ class WhisperProcessManager {
                 if trimmed.hasPrefix("VICTOR_SOURCE:") {
                     let emoji = String(trimmed.dropFirst("VICTOR_SOURCE:".count))
                     DispatchQueue.main.async { self?.onDeviceChanged?(emoji) }
+                } else if trimmed.hasPrefix("SENTINEL_WAKE:") {
+                    let why = String(trimmed.dropFirst("SENTINEL_WAKE:".count))
+                    DispatchQueue.main.async { self?.onSentinelWake?(why) }
                 } else if trimmed.hasPrefix("VICTOR_VOICE:") {
                     let label = String(trimmed.dropFirst("VICTOR_VOICE:".count))
                     DispatchQueue.main.async { self?.onVoice?(label) }
@@ -161,6 +167,14 @@ class WhisperProcessManager {
         _ = kill(p.processIdentifier, SIGKILL)
         isRunning = false
         process = nil
+    }
+
+    /// 👂 Ask a listening whisper to record now, keeping what it holds in
+    /// memory (`SIGUSR1`, handled in `whisper_runner.py`). False when there is
+    /// no live process to ask.
+    func wakeSentinel() -> Bool {
+        guard let p = process, p.isRunning else { return false }
+        return kill(p.processIdentifier, SIGUSR1) == 0
     }
 
     func stop() {

@@ -179,6 +179,14 @@ _RECORD_QUEUE_BLOCKS = int(os.environ.get("WHISPER_RECORD_QUEUE_BLOCKS", "600"))
 _CAPTURE_ONLY = os.environ.get("WHISPER_CAPTURE_ONLY", "0").strip().lower() in {
     "1", "true", "yes", "on"
 }
+# 👂 After `Stop ❌` on battery (2026-11-24): capture-only, but listening — the
+# audio stays in memory (the last 10 min) and nothing reaches the disk until
+# voice is heard (`battery_audio.VoiceSentinel`) or a call starts (the
+# `MeetingDetector` marker). Then every channel writes its ring out, records on,
+# and `SENTINEL_WAKE:<why>` tells the app. Meaningless without capture-only.
+_SENTINEL = _CAPTURE_ONLY and os.environ.get("WHISPER_SENTINEL", "0").strip().lower() in {
+    "1", "true", "yes", "on"
+}
 
 # Speaker identification, **dark-launched**: it writes its verdicts to a file of
 # their own and never to the transcript.
@@ -1437,18 +1445,47 @@ class WhisperTranscriptionRunner:
         try:
             from battery_audio import DIR_NAME, SessionRecorder
 
-            return SessionRecorder(
-                self.output_dir / DIR_NAME, label, log=log, queue_blocks=_RECORD_QUEUE_BLOCKS
+            rec = SessionRecorder(
+                self.output_dir / DIR_NAME, label, log=log, queue_blocks=_RECORD_QUEUE_BLOCKS,
+                listening=_SENTINEL, on_wake=lambda who: self._sentinel_wake(f"voice:{who}"),
             )
+            self._recorders.append(rec)
+            return rec
         except Exception as exc:  # noqa: BLE001
             log.error("transcript", f"🔋 battery recorder unavailable: {exc!r}")
             return None
+
+    def _sentinel_wake(self, why: str):
+        """👂 Voice or a call while listening: every channel records again,
+        each keeping what its ring holds. Once per process."""
+        with self._sentinel_lock:
+            if self._sentinel_woke:
+                return
+            self._sentinel_woke = True
+        for rec in self._recorders:
+            rec.record()
+        log.info("transcript", f"👂 sentinel woke ({why}) — battery recording resumed")
+        print(f"SENTINEL_WAKE:{why}", flush=True)
+
+    def _sentinel_call_watch(self):
+        """A call needs no 30 s of voice: the marker alone resumes recording."""
+        while not self._sentinel_woke:
+            if _meeting_marker_live():
+                self._sentinel_wake("call")
+                return
+            time.sleep(3)
 
     def start(self):
         # Capture-only (🔋) has nothing to transcribe, so nothing to queue: a
         # `None` queue is what tells each channel to stop at the recorder.
         tx_queue: queue.Queue | None = None if _CAPTURE_ONLY else queue.Queue()
-        if _CAPTURE_ONLY:
+        self._recorders = []
+        self._sentinel_lock = threading.Lock()
+        self._sentinel_woke = False
+        if _SENTINEL:
+            log.info("transcript", "👂 sentinel mode: listening on battery, last 10 min kept in memory, no model loaded")
+            threading.Thread(target=self._sentinel_call_watch, daemon=True, name="sentinel-call").start()
+        elif _CAPTURE_ONLY:
             log.info("transcript", "🔋 capture-only mode: recording on battery, no model loaded")
 
         # Victor channel
@@ -1966,6 +2003,15 @@ def _install_quiet_death_handlers(runner_ref: dict) -> None:
 
     signal.signal(signal.SIGTERM, _graceful_exit)
     signal.signal(signal.SIGINT, _graceful_exit)
+
+    # 👂 The menu's "record now" while listening: the same wake as voice heard,
+    # so the 10 minutes in memory reach the disk instead of dying in a restart.
+    def _wake_sentinel(_signum, _frame):
+        runner = runner_ref.get("runner")
+        if runner is not None and _SENTINEL:
+            threading.Thread(target=runner._sentinel_wake, args=("menu",), daemon=True).start()
+
+    signal.signal(signal.SIGUSR1, _wake_sentinel)
 
     if os.environ.get("WHISPER_QUIET_CRASH", "1") != "1":
         print("[sentinel    ] quiet-crash disabled — macOS will show the crash dialog", flush=True)

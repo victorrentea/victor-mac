@@ -73,8 +73,11 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private var isTranscriptionPausedByBattery: Bool { powerState == .pausedOnBattery }
     /// On battery, microphones to disk, transcribed on AC (👂).
     private var isRecordingOnBattery: Bool { powerState == .recordingOnBattery }
-    /// The 🔋 row's click. Shown only off AC.
-    var onToggleBatteryRecording: (() -> Void)?
+    /// On battery after `Stop ❌`: whisper listens, nothing on disk, records
+    /// again by itself on voice. Drawn like a pause: nothing is being kept.
+    private var isListeningOnBattery: Bool { powerState == .listeningOnBattery }
+    /// The 🔋 rows' clicks. Shown only off AC.
+    var onBatteryChoice: ((TranscriptionController.BatteryChoice) -> Void)?
     private var transcribeSource: String = ""
     private var availableSources: [String] = []
     /// `auto`, or one of `MicRoster.ids`. See `setChosenMic`.
@@ -1438,14 +1441,30 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         if transcribeItem != nil { updateTranscribeTitle() }
     }
 
-    /// The 🔋 row's title. Like the 🔴 row, the state is in the words.
+    /// The 🔋 rows' titles. Like the 🔴 row, the state is in the words.
+    /// `off` lives only here, never on the pill (Victor, 2026-11-24: *"nu dintr-un
+    /// buton confortabil pe overlay, ci undeva din meniu"*) — for the plane whose
+    /// noise would keep waking the listener.
     enum BatteryRecordingMenu {
-        static let stop = "⏹ Stop recording on battery (until AC)"
-        static let start = "👂 Record audio to transcribe later"
+        static let off = "⏹ Stop recording and listening (until AC)"
+        static let record = "👂 Record audio to transcribe later"
+        static let recordNow = "⏺ Record now (keeps the last 10 min)"
+
+        static func rows(_ state: TranscriptionController.State)
+            -> [(title: String, choice: TranscriptionController.BatteryChoice)] {
+            switch state {
+            case .onAC: return []
+            case .recordingOnBattery: return [(off, .off)]
+            case .listeningOnBattery: return [(recordNow, .record), (off, .off)]
+            case .pausedOnBattery: return [(record, .record)]
+            }
+        }
     }
 
-    @objc private func toggleBatteryRecordingAction() {
-        onToggleBatteryRecording?()
+    @objc private func batteryChoiceAction(_ sender: NSMenuItem) {
+        let all: [TranscriptionController.BatteryChoice] = [.record, .listen, .off]
+        guard all.indices.contains(sender.tag) else { return }
+        onBatteryChoice?(all[sender.tag])
     }
 
     private func refreshMenuIcon() {
@@ -1481,6 +1500,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         let mark: String?
         var overlay = MicOverlay.none
         if isRecordingOnBattery { mark = nil; overlay = .zigzag }
+        else if isListeningOnBattery { mark = nil; overlay = .pause }
         else if !isTranscribing && isTranscriptionPausedByBattery { mark = nil; overlay = .pause }
         else if !isTranscribing { mark = stopBlinkAlt ? "🟦" : "🟥" }
         else if isTranscriptionStale { mark = "🤐" }
@@ -1491,6 +1511,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         let mic = MicRoster.byGlyph(glyph)
         let name = mic.map { "\($0.glyph) \($0.label)" } ?? glyph.nonBlank(or: "unknown input")
         let state = isRecordingOnBattery ? "recording on battery"
+            : isListeningOnBattery ? "listening on battery, records again on voice"
             : (!isTranscribing && isTranscriptionPausedByBattery) ? "transcription off on battery"
             : !isTranscribing ? "transcription stopped"
             : isTranscriptionStale ? "no words for a while" : "transcribing"
@@ -1520,10 +1541,12 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         menu.addItem(transcribeItem)
         menu.addItem(tailItem)
         // 🔋 Only off AC: on AC there is nothing to switch.
-        if powerState != .onAC {
-            let item = NSMenuItem(title: isRecordingOnBattery ? BatteryRecordingMenu.stop : BatteryRecordingMenu.start,
-                                  action: #selector(toggleBatteryRecordingAction), keyEquivalent: "")
+        for row in BatteryRecordingMenu.rows(powerState) {
+            let item = NSMenuItem(title: row.title, action: #selector(batteryChoiceAction(_:)), keyEquivalent: "")
             item.target = self
+            // A tag, not a `representedObject`: the mic-pick rows are found by
+            // `representedObject is String`, and a choice string would join them.
+            item.tag = [TranscriptionController.BatteryChoice.record, .listen, .off].firstIndex(of: row.choice) ?? 0
             menu.addItem(item)
         }
         for item in [summaryItem, factCheckItem, factCheckMinuteItem, liveCaptionsItem, voiceRecordItem] {
@@ -1818,6 +1841,11 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         if isTranscriptionPausedByBattery {
             transcribeItem.title = "Off - On Battery"
             transcribeItem.image = loadResourceIcon("icon_leaf")
+            return
+        }
+        if isListeningOnBattery {
+            transcribeItem.title = "👂 Listening on battery: records again on voice"
+            transcribeItem.image = nil
             return
         }
         if isRecordingOnBattery {

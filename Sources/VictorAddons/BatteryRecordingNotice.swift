@@ -20,8 +20,15 @@ import Cocoa
 ///   good: an hour later, still on battery and still recording, it comes back.
 ///   The snooze lasts until the charger is plugged in — the next unplugging
 ///   shows it again at once.
-/// - `Stop ❌` stops the recording until AC, exactly like the menu's `⏹ Stop
-///   recording on battery` (`onStop`); the pill goes with it.
+/// - `Stop ❌` stops the *disk*, not the ears (2026-11-24): whisper keeps
+///   listening and records again by itself on voice (`.listen`, `onStop`). It
+///   used to stop everything until AC, and a press at 12:40 that day cost the
+///   whole 12:30–13:30 meeting. Stopping everything is the menu's alone.
+///
+/// **When the listener records again** a second, quiet pill says so — grey,
+/// one `Dismiss`, nothing else (Victor: *"reiei automat și ridici un overlay.
+/// Doar dismiss pe el … ceva subtil"*) — and the orange one is snoozed for the
+/// hour, so no Stop ❌ comes back with it.
 final class BatteryRecordingNotice {
     static let text = "🔋"
     /// 🔋 stands narrow in a wide emoji cell: this much empty cell, plus the
@@ -34,6 +41,9 @@ final class BatteryRecordingNotice {
     private let screensProvider: () -> [NSScreen]
     private let now: () -> Date
     private var banner: BottomLeftBanner?
+    /// The quiet "recording again" pill, up until dismissed or the charger.
+    private var resumedBanner: BottomLeftBanner?
+    static let resumedColor = NSColor(white: 0.18, alpha: 0.72)
     private var snoozeTimer: Timer?
     private(set) var snoozedUntil: Date?
     private(set) var recording = false
@@ -47,6 +57,36 @@ final class BatteryRecordingNotice {
     }
 
     var isVisible: Bool { banner?.isVisible ?? false }
+    var isResumedVisible: Bool { resumedBanner?.isVisible ?? false }
+
+    /// What the quiet pill says, by `SENTINEL_WAKE` reason.
+    static func resumedText(_ why: String) -> String {
+        if why == "call" { return "🔴 Call started — recording again" }
+        if why == "menu" { return "🔴 Recording again" }
+        return "🔴 Heard voices — recording again"
+    }
+
+    /// 👂 The listener is recording again: snooze the orange pill for the hour
+    /// and raise the quiet one. Main thread, before the state change.
+    func resumedOnVoice(_ why: String) {
+        overlayInfo("👂 battery recording resumed on its own (\(why))")
+        snoozeNow()
+        // The menu's "Record now" is his own click: nothing to announce.
+        guard why != "menu" else { return }
+        resumedBanner?.dismiss(animated: false)
+        let b = BottomLeftBanner(screensProvider: screensProvider, hoverable: true)
+        b.clickOnly = true
+        b.onHover = { [weak self] in self?.dismissResumed() }
+        b.onHoverCountdownExpired = { [weak self] in self?.dismissResumed() }
+        b.show(text: Self.resumedText(why), backgroundColor: Self.resumedColor,
+               font: NSFont.systemFont(ofSize: 20), clickAction: .dismiss)
+        resumedBanner = b
+    }
+
+    func dismissResumed() {
+        resumedBanner?.dismissSinking()
+        resumedBanner = nil
+    }
 
     /// Whether the pill should be up — the policy, without any AppKit.
     static func shouldShow(recording: Bool, snoozedUntil: Date?, now: Date) -> Bool {
@@ -58,6 +98,7 @@ final class BatteryRecordingNotice {
     /// Main thread. Call on every `TranscriptionController.State` change.
     func update(_ state: TranscriptionController.State) {
         recording = state == .recordingOnBattery
+        if state == .onAC { dismissResumed() }
         if state == .onAC {
             // The charger ends the snooze: the next battery stretch shows at once.
             snoozedUntil = nil
@@ -152,6 +193,6 @@ final class BatteryRecordingNotice {
 
     func stateJSON() -> String {
         let until = snoozedUntil.map { String(Int($0.timeIntervalSince1970)) } ?? "null"
-        return "{\"recording\":\(recording),\"visible\":\(isVisible),\"snoozed_until\":\(until)}"
+        return "{\"recording\":\(recording),\"visible\":\(isVisible),\"resumed_visible\":\(isResumedVisible),\"snoozed_until\":\(until)}"
     }
 }
