@@ -118,6 +118,18 @@ back as a 90×90 square; refit with the prefs-write + engine-restart recipe abov
 
 ### 🔎 The fifth path: our own zoom, in a window (`ShareZoom`, ⌥+scroll in Share mode, 2026-10-01)
 
+**🖱️ Right button held + wheel zooms it too, no keyboard (`RightScrollZoom`, 2026-11-24).**
+Victor: *"zoom ținând butonul din dreapta apăsat și dând scroll"*. Share mode only; with the
+macOS magnifier the right button is untouched. Apps open the context menu on the **press**, so
+the session tap withholds `rightMouseDown` and decides at the release: a scroll came meanwhile
+→ press and release are both swallowed, no menu; no scroll → the press is sent then
+(`tapPostEvent`, so it enters after our tap and ahead of the release) and **the menu opens at
+button-up**. Cost: no app sees a right-**drag** in Share mode (its drags go out as plain moves).
+The left button was ruled out — its press cannot be withheld without delaying every selection
+and drag. Each scroll re-checks the hardware button (`hidSystemState`), so a release lost to a
+tap timeout cannot leave bare scrolls zooming — which also means **posted events cannot test
+it**; first build went out tested by unit tests only, then by hand.
+
 **⌥+scroll drives one zoom or the other, never both (`ZoomEngine`, 2026-10-26).** Victor:
 *"n-are sens vreodată să fac zoom și de un fel, și de altul"*. **⌥ + wheel click** flips between
 **macOS zoom** (⌥+scroll reaches the magnifier, as before) and **Share Zoom** (the HID

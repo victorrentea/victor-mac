@@ -269,6 +269,10 @@ private let VK_I: CGKeyCode = 0x22
         get { zoomEngineLock.lock(); defer { zoomEngineLock.unlock() }; return zoomEngineValue }
         set { zoomEngineLock.lock(); zoomEngineValue = newValue; zoomEngineLock.unlock() }
     }
+    /// 🖱️ Right button held + wheel → ShareZoom, and the press it withholds
+    /// meanwhile (`RightScrollZoom`). Tap thread only.
+    private var rightScrollZoom = RightScrollZoom()
+    private var rightScrollZoomPress: CGEvent?
     /// The tap thread's run loop, so the second-⌥-held check runs there too.
     private var tapRunLoop: CFRunLoop?
 
@@ -617,6 +621,10 @@ private let VK_I: CGKeyCode = 0x22
             CGEventMask(1 << CGEventType.otherMouseUp.rawValue) |
             // The 🔦 glass spotlight is the one wheel *drag* this app reads.
             CGEventMask(1 << CGEventType.otherMouseDragged.rawValue) |
+            // 🖱️ Right button held + wheel → ShareZoom (`RightScrollZoom`).
+            CGEventMask(1 << CGEventType.rightMouseDown.rawValue) |
+            CGEventMask(1 << CGEventType.rightMouseUp.rawValue) |
+            CGEventMask(1 << CGEventType.rightMouseDragged.rawValue) |
             CGEventMask(1 << CGEventType.scrollWheel.rawValue)
 
         let tap = CGEvent.tapCreate(
@@ -757,6 +765,34 @@ private let VK_I: CGKeyCode = 0x22
                 if historyOpen && !hasCmdFlag { self?.onClipboardHistoryCommandReleased?() }
             }
             return Unmanaged.passUnretained(event)
+        }
+
+        // 🖱️ Right button held + wheel → ShareZoom (`RightScrollZoom`). The press
+        // is withheld, so that no context menu opens over a zoom; a release with
+        // no scroll in between sends press + release then. `tapPostEvent` puts
+        // the press in the stream *after* this tap and ahead of the release we
+        // return, so it never comes back through here.
+        if type == .rightMouseDown {
+            let verdict = rightScrollZoom.down(enabled: zoomEngine == .share)
+            rightScrollZoomPress = verdict == .swallow ? event.copy() : nil
+            if verdict == .swallow { return nil }
+        } else if type == .rightMouseDragged, rightScrollZoom.held {
+            // No app saw a press: to it these are plain moves.
+            event.type = .mouseMoved
+        } else if type == .rightMouseUp {
+            let press = rightScrollZoomPress
+            rightScrollZoomPress = nil
+            switch rightScrollZoom.up() {
+            case .pass: break
+            case .swallow: return nil
+            case .replayClick:
+                if let press {
+                    press.location = event.location
+                    press.timestamp = event.timestamp
+                    press.flags = event.flags
+                    press.tapPostEvent(proxy)
+                }
+            }
         }
 
         // 🔦 ⇧ + wheel-drag → `GlassSpotlight`; ⌘ + wheel-drag moves the box
@@ -912,6 +948,14 @@ private let VK_I: CGKeyCode = 0x22
             // scroll on this Mac. ⌥⇧+scroll was this zoom until 2026-10-26 and is
             // left alone now: ⌥ + wheel click is the engine switch.
             let zoomFlags = Self.scrollModifiers(event)
+            // 🖱️ …and so does a scroll made with the right button held.
+            if rightScrollZoom.held,
+               rightScrollZoom.scroll(buttonDown: CGEventSource.buttonState(.hidSystemState, button: .right)) {
+                if let (delta, source) = zoomScroll(event) {
+                    DispatchQueue.main.async { [weak self] in self?.onShareZoomScroll?(delta, source) }
+                }
+                return nil
+            }
             if zoomFlags == [.maskAlternate], zoomEngine == .share {
                 let zoom = zoomScroll(event)
                 traceZoomScroll("session", event, zoom)
