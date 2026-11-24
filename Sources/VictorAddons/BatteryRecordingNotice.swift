@@ -121,9 +121,10 @@ final class BatteryRecordingNotice {
         refresh()
     }
 
-    /// The `Stop ❌` button. The state change that follows takes the pill down.
+    /// The `Stop ❌` button: off the disk, still listening (`.listen`). The
+    /// state change that follows takes the pill down.
     func stopNow() {
-        overlayInfo("👂/🔋 battery recording stopped until AC")
+        overlayInfo("👂/🔋 battery recording stopped — listening, records again on voice")
         onStop?()
     }
 
