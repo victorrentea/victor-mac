@@ -98,7 +98,9 @@ final class ChromeBridge {
     func publishFeedbackForm(session: String) -> Bool {
         var listeners = 0
         queue.sync {
-            listeners = self.connections.count
+            // Counted by the `hello`, not by connection: Victor Net sits on this
+            // socket too (the phone's music pause), and it is not a Chrome.
+            listeners = self.features.values.count { $0.contains("publish-feedback-form") }
             guard listeners > 0 else { return }
             self.seq += 1
             self.broadcast("{\"type\":\"publish-feedback-form\",\"session\":\(Self.jsonString(session)),\"seq\":\(self.seq)}")
@@ -208,9 +210,6 @@ final class ChromeBridge {
         return listeners > 0
     }
 
-    /// True while at least one Chrome extension is on the socket.
-    var hasClients: Bool { queue.sync { !connections.isEmpty } }
-
     private static func jsonString(_ s: String) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: [s])) ?? Data()
         let arr = String(data: data, encoding: .utf8) ?? "[\"\"]"
@@ -230,7 +229,7 @@ final class ChromeBridge {
             guard let self else { return }
             switch state {
             case .ready:
-                overlayInfo("🎵 Dictation bridge: Chrome connected (\(self.connections.count) total)")
+                overlayInfo("🎵 Dictation bridge: client connected (\(self.connections.count) total)")
                 // Replay the current state: a worker that was torn down mid
                 // dictation learns it still owes a resume.
                 self.send(self.stateJSON(), to: conn)
