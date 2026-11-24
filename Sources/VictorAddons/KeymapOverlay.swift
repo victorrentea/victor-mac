@@ -74,6 +74,9 @@ enum CommandControlShortcuts {
         22: "power",     // 6 — ⚡ two old hands rise from the bottom and loose blue
                          // lightning until it fills the screen, then sink again
                          // (2026-11-20, Victor's Gemini clip).
+        23: "inarius",   // 5 — 😇 a hooded angel comes down from the top edge and opens
+                         // his wings of golden light, on a transparent background
+                         // (2026-11-24, Victor's Gemini clip; every other ⌘⌃0 that afternoon).
         34: "xi",        // I — 🐼 the panda, the elephant's twin from the right
                          // half of the screen, on the key next to it. Named
                          // after the man like "trump", for the same reason.

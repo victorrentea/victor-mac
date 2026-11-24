@@ -120,6 +120,11 @@ class EventTapManager {
     /// screen and loose blue lightning until it fills the screen, then sink
     /// again, over a transparent background (drawn by Victor Effects).
     var onShowPower: (() -> Void)?
+    /// ⌘⌃5 — 😇 Inarius: a hooded angel in dark armour comes down from the top
+    /// edge, opens his wings of golden light, beats them and stays, wings open,
+    /// over a transparent background (drawn by Victor Effects). Until 2026-11-24
+    /// he took every other press of ⌘⌃0; Victor gave him his own key.
+    var onShowInarius: (() -> Void)?
     /// ⌘⌃I — 🐼 the panda, the elephant's twin walking in from the RIGHT edge
     /// into the right half of the screen. It spent its first morning on ⌃⌥I
     /// (2026-10-01); it moved next to the elephant so both animals live on
@@ -246,6 +251,7 @@ private let VK_SECTION: CGKeyCode = 0x0A  // kVK_ISO_Section, the § key top-lef
     private let VK_8: CGKeyCode = 0x1C
     private let VK_7: CGKeyCode = 0x1A
     private let VK_6: CGKeyCode = 0x16
+    private let VK_5: CGKeyCode = 0x17
 private let VK_F: CGKeyCode = 0x03
     private let VK_X: CGKeyCode = 0x07
     private let VK_W: CGKeyCode = 0x0D
@@ -1488,6 +1494,12 @@ private let VK_I: CGKeyCode = 0x22
         // Cmd+Ctrl+6 → ⚡ two hands loose blue lightning over the screen (suppress).
         if keyCode == VK_6 && hasCmd && hasCtrl && !hasOpt {
             DispatchQueue.global().async { [weak self] in self?.onShowPower?() }
+            return nil
+        }
+
+        // Cmd+Ctrl+5 → 😇 Inarius comes down and opens his wings (suppress).
+        if keyCode == VK_5 && hasCmd && hasCtrl && !hasOpt {
+            DispatchQueue.global().async { [weak self] in self?.onShowInarius?() }
             return nil
         }
 
