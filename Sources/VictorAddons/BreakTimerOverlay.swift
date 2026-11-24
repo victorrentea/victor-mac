@@ -110,6 +110,14 @@ final class BreakTimerController {
     /// disrupting a countdown that's already running).
     var isShowing: Bool { panel != nil }
 
+    /// A real break on screen right now (not the stopwatch, not an UNTIL BREAK
+    /// watch): its seconds left and the display its watch sits on. Read every
+    /// second by `BreakTimeMirror` and the 🧠 slot's ☕.
+    var runningBreak: (remaining: Int, paused: Bool, screen: NSScreen?)? {
+        guard let panel, !isStopwatch, BreakTimerModel.endsABreak(title: titleText) else { return nil }
+        return (remaining, paused, panel.screen)
+    }
+
     /// What a landing ☕ "−1" does to the countdown on screen right now.
     var coffeeMinute: BreakTimerModel.CoffeeMinute {
         BreakTimerModel.coffeeMinute(title: titleText, remaining: remaining)

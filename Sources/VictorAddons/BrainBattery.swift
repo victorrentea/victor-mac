@@ -285,6 +285,11 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
     /// at zero. Shown even with the battery ticked off.
     private var countdownTitle: NSAttributedString?
     private var countdownMenu: NSMenu?
+    /// ☕ A break is on: the slot shows a coffee instead of the battery that is
+    /// about to refill (2026-11-24, Victor: *"în timpul pauzei, în locul bateriei
+    /// depleted, o să apară o cafea"*). Just the cup, no time: `☕ 9:42` is the
+    /// countdown TO the break, and the two must not be confused.
+    private var breakActive = false
 
     init(breakEndedAt: @escaping () -> Date?) {
         self.breakEndedAt = breakEndedAt
@@ -317,6 +322,13 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         countdownTitle = title
         countdownMenu = menu
         if modeChanged { syncItem() } else { draw() }
+    }
+
+    /// From `BreakTimeMirror`'s tick: a real break started or ended.
+    func setBreakActive(_ active: Bool) {
+        guard active != breakActive else { return }
+        breakActive = active
+        refresh()
     }
 
     /// Where the slot is on screen (global coordinates), for the ☕ −1 to fly at.
@@ -370,6 +382,7 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         summary = BrainEnergy.lines(state, reference: reference, now: now)
         for (row, line) in zip(statusRows, summary) { row.title = line }
         statusItem?.isVisible = countdownTitle != nil
+            || (enabled && breakActive)
             || (enabled && BrainEnergy.isShown(state, reference: reference,
                                                hiddenAt: BrainBatterySettings.hiddenAt))
         draw()
@@ -384,8 +397,14 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
             item.menu = countdownMenu
             return
         }
-        item.button?.title = ""
         item.menu = menu
+        if breakActive {
+            item.button?.image = nil
+            item.button?.title = "☕"
+            item.button?.toolTip = "Break — the battery refills when it ends"
+            return
+        }
+        item.button?.title = ""
         item.button?.image = BrainBatteryIcon.image(for: state, blinkOn: blinkOn)
         item.button?.toolTip = summary.joined(separator: "\n")
     }

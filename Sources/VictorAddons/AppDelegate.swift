@@ -90,6 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var walkieDictSync: WalkieDictSync?
     private var tartVMIndicator: TartVMIndicator?
     private var brainBattery: BrainBatteryIndicator?
+    private var breakTimeMirror: BreakTimeMirror?
     /// ☕ The voted countdown to the break, in the 🧠 slot of the menu bar.
     private let untilBreak = UntilBreakCountdown()
     /// Drives Whisper purely off the power source: on AC → transcribe, on
@@ -1827,6 +1828,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             self?.menuBarManager.openBreakMenu()
         }
         untilBreak.resumeIfPersisted()
+
+        // ☕ During a break: a cup in the 🧠 slot, and the time left on every
+        // screen PowerPoint fills (Presenter View hides the menu bar).
+        let breakTimeMirror = BreakTimeMirror(breakState: { [weak self] in self?.breakTimer.runningBreak })
+        breakTimeMirror.onBreakActive = { [weak brainBattery] on in brainBattery?.setBreakActive(on) }
+        breakTimeMirror.start()
+        self.breakTimeMirror = breakTimeMirror
 
         let portKiller = PortKiller()
         self.portKiller = portKiller
