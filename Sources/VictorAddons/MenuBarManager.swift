@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 25, 11:24"
+    static let BUILD_TIME = "Nov 25, 18:48"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -89,8 +89,6 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private var liveCaptionsItem: NSMenuItem!
     private var voiceRecordItem: NSMenuItem!
     private var summaryItem: NSMenuItem!
-    private var factCheckItem: NSMenuItem!
-    private var factCheckMinuteItem: NSMenuItem!
     private var wsConnected: Bool = false
     private var sessionActive: Bool = false
     private(set) var tailItem: NSMenuItem!
@@ -329,10 +327,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // carries no key equivalent because it now genuinely has no key — the
         // one thing a menu row must never do is promise one.
         //
-        // Directly above 🔬 Fact-check, because the pair is the same question:
-        // act on what was just *said* in the room. The 60 s is in the title for
-        // the same reason the 10 min is in the one below — the window is the
-        // whole contract.
+        // The 60 s is in the title because the window is the whole contract.
         //
         // The title ends in **→ 📋** because the pasteboard is the whole point
         // and nothing else in this menu says so: every other row here *does*
@@ -342,16 +337,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // read as the same gesture.
         summaryItem = voiceItem("💬 Last 1m summary ⇒ 📋", action: #selector(transcriptPickerAction))
 
-        // 🔬 Fact-check what was just said. It KEPT the top level when the Tail
-        // moved down, and that is the line between them: the Tail is a readout
-        // of the transcription, this is something you fire mid-sentence and
-        // want in one click. The window is in the title because 10 minutes is
-        // the whole contract: it checks the topic being taught, not the
-        // sentence that just ended.
-        factCheckItem = voiceItem("🔬 Fact-check last 30 s", action: #selector(researchProofAction))
-        // 🔬 The same check over a whole minute (2026-11-20, Victor: *"add fact check
-        // last 1 min"*): for a claim that took a few sentences to make.
-        factCheckMinuteItem = voiceItem("🔬 Fact-check last 1 min", action: #selector(factCheckMinuteAction))
+        // 🔬 Fact-check last 30 s / last 1 min lived here until 2026-11-25 (Victor:
+        // *"scoate fact check menu entries din victor-mac"*): Walkie Talkie's ⚡
+        // question offers the last 30/60 s itself, pulled from `GET /transcript/tail`
+        // (`RecentSpeech`).
 
         // 🎬 Live subtitles — the band across the bottom of the projector,
         // fed by ElevenLabs Scribe v2 Realtime **only while it is on**.
@@ -1529,7 +1518,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     }
 
     /// The mic item's menu (2026-11-20): every row that acts on the voice —
-    /// 🎙️ Transcribing ▸, 💬 summary, 🔬 fact-check, 🎬 Live Captions, ⏺️ Record
+    /// 🎙️ Transcribing ▸, 💬 summary, 🎬 Live Captions, ⏺️ Record
     /// voice — then, under a line, the mic pick (Automatic + the roster). Built
     /// fresh on open; `removeAllItems` in `MicStatusItem` frees the rows first.
     private func fillMicMenu(_ menu: NSMenu) {
@@ -1549,7 +1538,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             item.tag = [TranscriptionController.BatteryChoice.record, .listen, .off].firstIndex(of: row.choice) ?? 0
             menu.addItem(item)
         }
-        for item in [summaryItem, factCheckItem, factCheckMinuteItem, liveCaptionsItem, voiceRecordItem] {
+        for item in [summaryItem, liveCaptionsItem, voiceRecordItem] {
             if let item { menu.addItem(item) }
         }
         menu.addItem(.separator())
@@ -1941,14 +1930,6 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         guard let item = fluxInboxItem else { return }
         let status = onTaskInboxStatus?() ?? (lastCheck: nil, launches: 0)
         item.title = FluxInboxMenu.title(lastCheck: status.lastCheck, launches: status.launches)
-    }
-
-    @objc private func researchProofAction() {
-        FactCheck.launchNow(reason: "menu")
-    }
-
-    @objc private func factCheckMinuteAction() {
-        FactCheck.launchNow(reason: "menu 1 min", seconds: 60)
     }
 
     @objc private func checkTaskInboxAction() {

@@ -15,7 +15,7 @@ final class HttpAccessPolicyTests: XCTestCase {
     }
 
     func testEverythingElseStaysOnThisMac() {
-        for path in ["/test/email", "/test/screen-lock", "/test/focus-playlist",
+        for path in ["/test/email", "/test/screen-lock", "/test/focus-playlist", "/transcript/tail?seconds=60",
                      "/open?url=http://evil.example", "/hands-off/start", "/link/publish",
                      "/session/name", "/training/prompt-capture", "/feedback-form/publish",
                      "/mirror/exclusions", "/press/1", "/state", "/brand-new-route", "/", ""] {

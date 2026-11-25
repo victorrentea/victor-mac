@@ -15,10 +15,10 @@ transcribing. A CoreAudio listener redraws it when the default input changes.
 live captions, record voice — totul sub meniul de microfon, pentru că sunt legate de voce"*).
 The 💬 menu no longer carries them; the 🎙️ item's menu (`fillMicMenu`) is, top to bottom:
 🎙️ Transcribing (no submenu since 2026-11-20), 🐕 Tail, 🔋 battery recording (off AC only), 💬 Last 1m
-summary ⇒ 📋, 🔬 Fact-check last 30 s, 🔬 Fact-check last 1 min, 🎬 Live Captions, ⏺️ Record voice snippet, a line, then the
+summary ⇒ 📋, 🎬 Live Captions, ⏺️ Record voice snippet, a line, then the
 mic pick — Automatic + the roster (`appendMicRows`), flat, no longer repeated inside the
 Transcribing submenu. The rows are still built in `buildMenu` (`voiceItem`, not `addItem`)
-and re-attached on every open.
+and re-attached on every open. **The two 🔬 Fact-check rows are gone since 2026-11-25** (Victor: *"scoate fact check menu entries din victor-mac"*): Walkie Talkie's ⚡ question offers the last 30/60 s itself (`docs/recent-speech.md`).
 
 - **☠️ Kill port** — submenu with recent ports + custom port dialog
 - **The training-assistant row has three states** (`refreshWsItem`): session started →

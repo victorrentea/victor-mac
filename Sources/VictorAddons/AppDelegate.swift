@@ -1303,9 +1303,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             // a real >= 5 min break fires, but bypassing the minutes + cooldown gates.
             BreakSummaryLauncher.launchNow(reason: "/test/break-summary")
         }
-        tabletServer?.onTestResearchProof = {
-            FactCheck.launchNow(reason: "/test/research-proof")
-        }
         tabletServer?.onTestFeedbackReminder = { [weak self] in
             DispatchQueue.main.async { self?.feedbackFormReminder?.offer(reason: "/test/feedback-reminder") }
         }
@@ -2014,9 +2011,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 menuBarManager?.flashScreenshotIcon()
             }
         }
-        // 🔬 The fact-check reads the last 30 s of today's transcript from here
-        // and hands it to Walkie Talkie as a quick question.
-        FactCheck.transcriptionFolder = transcriptionFolder
+        // 🎙️ `GET /transcript/tail` reads the last 30/60 s of today's transcript
+        // from here, for Walkie Talkie's ⚡ question modal (`RecentSpeech`).
+        RecentSpeech.transcriptionFolder = transcriptionFolder
         // Apply the current power state (start Whisper if on AC) and arm the
         // crash-recovery heartbeat. Single launch entry point.
         controller.start()
