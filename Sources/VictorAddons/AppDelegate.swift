@@ -1409,10 +1409,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         // without dragging the pointer out from under whoever is using it.
         tabletServer?.onTestScreenshotMark = { at in
             let parts = (at ?? "").split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
-            // Four numbers are a crop's box (x,y,w,h global Cocoa): its 📸 flash.
+            // Four numbers are a crop's box (x,y,w,h global Cocoa): it is really
+            // cut (to a temp file, not the screenshots folder) and echoed back.
             if parts.count == 4 {
                 let rect = NSRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
-                DispatchQueue.main.async { ScreenCaptureFlash.flash(area: rect) }
+                ScreenshotManager.echoTestCrop(rect)
                 return
             }
             let point = parts.count == 2 ? NSPoint(x: parts[0], y: parts[1]) : NSEvent.mouseLocation

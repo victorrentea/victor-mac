@@ -105,19 +105,36 @@ enum ScreenCaptureFlash {
     // flash below stays — one keypress, no gesture, nothing else to say it
     // happened.
 
-    /// 📸 The crop's "taken": the selected area washes yellow and the old
-    /// camera glyph sits in its middle, both fading out together — and still
-    /// **no ring** round it. Victor, 2026-10-09: *"there should be an icon of
-    /// the camera like it was in the old days with yellow appearing on the area
-    /// that I've selected but without any yellow border around it."* The box
-    /// vanishing on release said nothing about whether a file landed; this
-    /// says it, over the pixels that were taken.
+    /// 📸 The crop's "taken": **the picture itself, shown back over the pixels it
+    /// was cut from, sliding 15 pt right and down, then gone** — Walkie Talkie's
+    /// full-screen receipt (`CaptureFlash.echo` there), now on a crop too.
+    /// Victor, 2026-11-25: *"să nu mai faci yellow overlay peste zona tăiată +
+    /// glyph de cameră foto. În loc, imaginea prinsă să se miște puțin în dreapta
+    /// jos, cum face când fac poza la tot ecranul integral."* What moves is what
+    /// was caught; what stays put was not in it — a receipt that is also a check.
+    /// It replaces the yellow wash + camera glyph of 2026-10-09 (and
+    /// `camera_glyph.png` with it); still **no ring**.
+    ///
+    /// Same numbers as Walkie's, deliberately — one gesture in two apps:
+    /// 0.6 s linear slide, no hold, 0.15 s fade, opaque, above every menu and
+    /// over the synthetic zoom's glass (`.maximumWindow + 4`), out of any screen
+    /// share (`sharingType = .none`) and click-through.
     ///
     /// Raised only after the capture returned, so it is never in the picture —
     /// which is also why it ignores the suppression a crop holds: that guards
     /// the selection, and the selection is over. `rect` is global Cocoa.
-    static func flash(area rect: NSRect, duration: CFTimeInterval = 0.9) {
-        let panel = NSPanel(contentRect: rect,
+    static let echoShift: CGFloat = 15
+    private static let echoSlide: CFTimeInterval = 0.6
+    private static let echoFade: CFTimeInterval = 0.15
+    private static let echoLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)) + 4)
+
+    static func echo(_ picture: CGImage, over rect: NSRect) {
+        guard rect.width > 1, rect.height > 1 else { return }
+        let middle = NSPoint(x: rect.midX, y: rect.midY)
+        guard let screen = NSScreen.physical.first(where: { NSMouseInRect(middle, $0.frame, false) })
+                ?? NSScreen.main else { return }
+
+        let panel = NSPanel(contentRect: screen.frame,
                             styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered,
                             defer: false)
@@ -125,88 +142,56 @@ enum ScreenCaptureFlash {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.ignoresMouseEvents = true
-        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        panel.level = echoLevel
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle, .transient]
+        panel.sharingType = .none
 
-        let size = rect.size
-        let view = NSView(frame: NSRect(origin: .zero, size: size))
+        let view = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.systemYellow.withAlphaComponent(0.3).cgColor
-
-        if let glyph = tintedCameraGlyph(tint: .systemYellow) {
-            // Half the box, capped so a near-full-screen crop doesn't get a
-            // poster-sized camera; the aspect decides which side binds.
-            let aspect = glyph.size.height / max(glyph.size.width, 1)
-            let glyphW = min(size.width * 0.5, size.height * 0.5 / aspect, 360)
-            let glyphH = glyphW * aspect
-            let glyphLayer = CALayer()
-            glyphLayer.frame = CGRect(x: (size.width - glyphW) / 2, y: (size.height - glyphH) / 2,
-                                      width: glyphW, height: glyphH)
-            glyphLayer.contents = glyph
-            glyphLayer.contentsGravity = .resizeAspect
-            glyphLayer.opacity = 0.9
-            view.layer?.addSublayer(glyphLayer)
-        }
+        let from = rect.offsetBy(dx: -screen.frame.minX, dy: -screen.frame.minY)
+        let shot = CALayer()
+        shot.contents = picture
+        shot.contentsGravity = .resize
+        shot.frame = from
+        view.layer?.addSublayer(shot)
 
         panel.contentView = view
-        panel.setFrame(rect, display: true)
+        panel.setFrame(screen.frame, display: true)
         panel.orderFrontRegardless()
         activePanels.append(panel)
 
-        let fade = CAKeyframeAnimation(keyPath: "opacity")
-        fade.values = [1.0, 1.0, 0.0]
-        fade.keyTimes = [0.0, 0.3, 1.0]
-        fade.duration = duration
-        fade.fillMode = .forwards
-        fade.isRemovedOnCompletion = false
-        view.layer?.add(fade, forKey: "fade")
+        // Right and *down*: Cocoa's y grows upwards.
+        let to = CGPoint(x: from.midX + echoShift, y: from.midY - echoShift)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        shot.position = to
+        shot.opacity = 0
+        CATransaction.commit()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+        let slide = CABasicAnimation(keyPath: "position")
+        slide.fromValue = NSValue(point: CGPoint(x: from.midX, y: from.midY))
+        slide.toValue = NSValue(point: to)
+        slide.duration = echoSlide
+        slide.timingFunction = CAMediaTimingFunction(name: .linear)
+        shot.add(slide, forKey: "slide")
+        let total = echoSlide + echoFade
+        let life = CAKeyframeAnimation(keyPath: "opacity")
+        life.values = [1, 1, 0]
+        life.keyTimes = [0, NSNumber(value: echoSlide / total), 1]
+        life.duration = total
+        shot.add(life, forKey: "life")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + total) {
             panel.orderOut(nil)
             activePanels.removeAll { $0 === panel }
         }
     }
 
-    private static var glyphCache: [String: NSImage] = [:]
-
-    /// `camera_glyph.png` (black outline on white) recoloured: white → fully
-    /// transparent, black → `tint`, anti-aliased edges kept as partial alpha.
-    private static func tintedCameraGlyph(tint: NSColor) -> NSImage? {
-        let key = tint.usingColorSpace(.deviceRGB)?.description ?? tint.description
-        if let cached = glyphCache[key] { return cached }
-
-        guard let url = Bundle.module.url(forResource: "camera_glyph", withExtension: "png", subdirectory: "Resources"),
-              let src = NSImage(contentsOf: url),
-              let cg = src.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-
-        let width = cg.width, height = cg.height
-        let bytesPerRow = width * 4
-        guard let ctx = CGContext(data: nil, width: width, height: height,
-                                  bitsPerComponent: 8, bytesPerRow: bytesPerRow,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
-        guard let data = ctx.data else { return nil }
-
-        let rgb = tint.usingColorSpace(.deviceRGB) ?? tint
-        let tr = rgb.redComponent, tg = rgb.greenComponent, tb = rgb.blueComponent
-        let ptr = data.bindMemory(to: UInt8.self, capacity: height * bytesPerRow)
-        for y in 0..<height {
-            for x in 0..<width {
-                let i = y * bytesPerRow + x * 4
-                let lum = (Double(ptr[i]) + Double(ptr[i + 1]) + Double(ptr[i + 2])) / (3.0 * 255.0)
-                let a = 1.0 - lum
-                ptr[i]     = UInt8((tr * a) * 255.0)
-                ptr[i + 1] = UInt8((tg * a) * 255.0)
-                ptr[i + 2] = UInt8((tb * a) * 255.0)
-                ptr[i + 3] = UInt8(a * 255.0)
-            }
-        }
-
-        guard let out = ctx.makeImage() else { return nil }
-        let image = NSImage(cgImage: out, size: NSSize(width: width, height: height))
-        glyphCache[key] = image
-        return image
+    /// A capture on disk as a `CGImage`, for `echo`. Off the main thread — it
+    /// decodes a JPEG.
+    static func loadPicture(_ url: URL) -> CGImage? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(src, 0, nil)
     }
 
     /// Mark the spot the cursor was standing on when the shutter went, with a

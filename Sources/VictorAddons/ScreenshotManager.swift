@@ -166,6 +166,22 @@ enum ScreenshotManager {
         }
     }
 
+    /// The crop's receipt without the overlay, for `/test/screenshot-mark`: `rect`
+    /// (global Cocoa) is really cut — into a temp file, not the folder or the
+    /// clipboard — and echoed back like a real crop.
+    static func echoTestCrop(_ rect: NSRect) {
+        let middle = NSPoint(x: rect.midX, y: rect.midY)
+        guard let screen = NSScreen.physical.first(where: { NSMouseInRect(middle, $0.frame, false) }) else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let temp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("victor-echo-test-\(UUID().uuidString).jpg")
+            defer { try? FileManager.default.removeItem(at: temp) }
+            guard CropCapture.capture(rect, on: screen, to: temp),
+                  let picture = ScreenCaptureFlash.loadPicture(temp) else { return }
+            DispatchQueue.main.async { ScreenCaptureFlash.echo(picture, over: rect) }
+        }
+    }
+
     static func wheelCropMoved(toCG point: CGPoint) { CropSelectionOverlay.dragMoved(toCG: point) }
     static func wheelCropReleased() { CropSelectionOverlay.endDrag() }
 
@@ -194,9 +210,14 @@ enum ScreenshotManager {
         // the pixels he drew it around — and a ring lit round those same pixels a
         // moment later is the same news, later, on top of the thing he framed.
         // Victor's call, and it applies in Walkie Talkie's copy of this gesture
-        // for the same reason. What it gets instead (2026-10-09) is a yellow wash
-        // + camera *inside* the box — the pixels are already on disk by now.
-        DispatchQueue.main.async { ScreenCaptureFlash.flash(area: selection.rect) }
+        // for the same reason. What it gets instead (2026-11-25) is the picture
+        // itself sliding 15 pt right-down off the pixels it was cut from, like
+        // Walkie's full-screen shot (`ScreenCaptureFlash.echo`); the yellow wash +
+        // camera of 2026-10-09 is gone. The pixels are already on disk by now.
+        if let picture = ScreenCaptureFlash.loadPicture(filepath) {
+            let rect = selection.rect
+            DispatchQueue.main.async { ScreenCaptureFlash.echo(picture, over: rect) }
+        }
         copyToClipboard(filepath)
         overlayInfo("✂️ \(filename) → clipboard + \(screenshotsDir.path)")
 
