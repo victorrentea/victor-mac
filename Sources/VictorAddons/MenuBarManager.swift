@@ -1455,9 +1455,11 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     /// buton confortabil pe overlay, ci undeva din meniu"*) — for the plane whose
     /// noise would keep waking the listener.
     enum BatteryRecordingMenu {
-        static let off = "⏹ Stop recording and listening (until AC)"
-        static let listen = "👂 Listen, record when voices are heard"
-        static let recordNow = "⏺ Record now (keeps the last 10 min)"
+        // **Each row wears the mark it leads to** (2026-11-25, Victor: *"în meniu tre să
+        // folosești aceleași emoji"*) — 🟠 recording, 🟥 not — never a third set (⏺ ⏹ 👂).
+        static let off = "🟥 Stop recording and listening (until AC)"
+        static let listen = "🟥 Listen, record when voices are heard"
+        static let recordNow = "🟠 Record now (keeps the last 10 min)"
 
         /// **The mark beside the mic, said in words** (2026-11-25, Victor: *"pătratul roșu
         /// trebuie să apară și în meniu undeva, să înțeleg repede de unde vine, ce înseamnă și
@@ -1466,15 +1468,19 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         static func status(_ state: TranscriptionController.State) -> String? {
             switch state {
             case .onAC: return nil
-            case .recordingOnBattery: return "🟠 On battery: recording, transcribed back on AC"
-            case .listeningOnBattery: return "🟥 On battery: paused, records when voices are heard"
-            case .pausedOnBattery: return "🟥 On battery: paused, not even listening"
+            // Two switches, both named (2026-11-25, Victor: *"transcribing: OFF, recording: ON"*):
+            // the mic open (macOS's orange pill) is not recording — 👂 listening keeps the
+            // last 10 min in memory only, so it is `Recording: OFF` and 🟥.
+            case .recordingOnBattery: return "🟠 Transcribing: OFF · Recording: ON"
+            case .listeningOnBattery: return "🟥 Transcribing: OFF · Recording: OFF (starts on voice)"
+            case .pausedOnBattery: return "🟥 Transcribing: OFF · Recording: OFF · Listening: OFF"
             }
         }
 
         static let statusHint = "The mark beside the microphone in the menu bar. On battery nothing is "
             + "transcribed (Whisper costs too much power): 🟠 = the mic is recorded to disk and transcribed "
-            + "when the Mac is plugged in; 🟥 (blinking) = paused. Change it with the rows below; "
+            + "when the Mac is plugged in; 🟥 (blinking) = not recording — while listening the last 10 min "
+            + "stay in memory and go to disk when voices are heard. Change it with the rows below; "
             + "plugging in the power brings back live transcription."
 
         static func rows(_ state: TranscriptionController.State)
@@ -1603,8 +1609,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             item.indentationLevel = 1   // under the status row they change
             menu.addItem(item)
         }
+        // On battery the status row above already says what the 🎙️ Transcribing row would
+        // (in 👂/🍃, a third set of marks), so that row only shows on AC.
         if BatteryRecordingMenu.status(powerState) != nil { menu.addItem(.separator()) }
-        menu.addItem(transcribeItem)
+        else { menu.addItem(transcribeItem) }
         menu.addItem(tailItem)
         for item in [summaryItem, liveCaptionsItem, voiceRecordItem] {
             if let item { menu.addItem(item) }

@@ -278,6 +278,21 @@ final class MicOverlayTests: XCTestCase {
         XCTAssertTrue(M.status(.recordingOnBattery)!.hasPrefix("🟠"))
         XCTAssertTrue(M.status(.listeningOnBattery)!.hasPrefix("🟥"))
         XCTAssertTrue(M.status(.pausedOnBattery)!.hasPrefix("🟥"))
+        XCTAssertTrue(M.status(.recordingOnBattery)!.contains("Recording: ON"))
+        XCTAssertTrue(M.status(.listeningOnBattery)!.contains("Recording: OFF"),
+                      "listening keeps the ring in memory: not recording")
+    }
+
+    /// Every 🔋 row wears the mark of the state it leads to, never ⏺ ⏹ 👂 (2026-11-25).
+    func testTheRowsWearTheMarkTheyLeadTo() {
+        typealias M = MenuBarManager.BatteryRecordingMenu
+        typealias C = TranscriptionController
+        for state in [C.State.recordingOnBattery, .listeningOnBattery, .pausedOnBattery] {
+            for row in M.rows(state) {
+                let next = C.state(onAC: false, choice: row.choice)
+                XCTAssertEqual(row.title.first, M.status(next)!.first, row.title)
+            }
+        }
     }
 
     /// 🟠 steady while recording on battery, 🟥 blinking while paused (2026-11-25).
