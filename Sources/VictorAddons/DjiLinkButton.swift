@@ -103,6 +103,14 @@ final class DjiLinkButton {
         if ports.count == 3 { overlayInfo("🎙️ DJI link button ×2 → ChatGPT voice on / off (asking Walkie Talkie)") }
         var request = URLRequest(url: url, timeoutInterval: 2)
         request.httpMethod = "POST"
+        // Walkie Talkie gates every loopback route behind a per-launch token since 2026-11-25
+        // (`walkie-talkie/Sources/WalkieTalkie/LoopbackToken.swift`); re-read it on every call,
+        // a relaunch writes a new one.
+        let tokenFile = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".walkie-talkie/test-token")
+        if let token = try? String(contentsOf: tokenFile, encoding: .utf8) {
+            request.setValue(token.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "X-Walkie-Token")
+        }
         URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
             guard (response as? HTTPURLResponse)?.statusCode != 200 else { return }
             DispatchQueue.main.async { self?.toggleChatVoice(ports: Array(ports.dropFirst())) }
