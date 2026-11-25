@@ -39,7 +39,18 @@ class JoinLinkBanner: NSPanel {
     /// the two menu rows carries the ✓.
     private(set) var isSessionLink = false
 
-    private var targetScreen: NSScreen
+    /// The display the banner belongs on, by id: an `NSScreen` kept across a
+    /// sleep or a display change goes stale — after the 25 Nov wake it still said
+    /// 1920 pt wide on a 1728 pt panel, so the link overflowed the right edge, the
+    /// QR hung off the corner and the compact pill landed under the menu bar.
+    private var targetDisplayID: CGDirectDisplayID?
+    private var targetScreen: NSScreen {
+        NSScreen.screens.first { Self.displayID(of: $0) == targetDisplayID } ?? AppDelegate.findRetinaScreen()
+    }
+    private static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {
+        screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+    }
+    private var relayoutWork: DispatchWorkItem?
     // The link fills the screen edge to edge: the font is scaled up (or down)
     // until the text spans the width minus this gutter, and the banner's
     // height follows the text.
@@ -68,7 +79,7 @@ class JoinLinkBanner: NSPanel {
     private var closePanel: BannerClosePanel?
 
     init(screen: NSScreen) {
-        self.targetScreen = screen
+        self.targetDisplayID = Self.displayID(of: screen)
 
         urlLabel = NSTextField(frame: .zero)
 
@@ -103,6 +114,32 @@ class JoinLinkBanner: NSPanel {
 
         setupQRPanel()
         setupClosePanel()
+
+        // A wake, a resolution change or a monitor coming or going: re-fit to the
+        // screen as it is now. Debounced — a wake fires several changes in a row.
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                               object: nil, queue: .main) { [weak self] _ in self?.scheduleRelayout() }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification,
+                                                          object: nil, queue: .main) { [weak self] _ in self?.scheduleRelayout() }
+    }
+
+    private func scheduleRelayout() {
+        relayoutWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.relayout() }
+        relayoutWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    /// Lays the visible banner out again on its screen's current geometry.
+    func relayout() {
+        guard bannerShowing, !isZooming else { return }
+        if isCompact {
+            layoutCompact()
+        } else {
+            layoutLarge()
+            qrPanel?.setFrame(Self.qrFrame(screen: targetScreen.frame, banner: frame, expanded: isQRExpanded), display: true)
+            closePanel?.setFrame(BannerClosePanel.frame(inBanner: frame), display: true)
+        }
     }
 
     private func setupClosePanel() {
@@ -148,7 +185,7 @@ class JoinLinkBanner: NSPanel {
     /// Re-target this banner onto a different screen. Call before show()
     /// so the banner and its QR land on the desired display.
     func setTargetScreen(_ screen: NSScreen) {
-        self.targetScreen = screen
+        self.targetDisplayID = Self.displayID(of: screen)
     }
 
     /// - Parameter uppercaseLastSegment: display the trailing path segment in caps.
