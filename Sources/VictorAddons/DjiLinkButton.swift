@@ -97,25 +97,24 @@ final class DjiLinkButton {
     private var pendingSingle: DispatchWorkItem?
 
     /// Two presses: Walkie Talkie's ⚡ quick question, started or ended
-    /// (`POST /question/toggle`). The first port whose Walkie answers wins; a 409 is an
-    /// answer (another dictation is recording) and is said, not retried elsewhere.
+    /// (`POST /question/toggle`). Asked on the port Walkie Talkie bound and nowhere else
+    /// (`WalkieLoopback.targets`); a 409 is an answer (another dictation is recording)
+    /// and is said, not retried elsewhere.
     @discardableResult
-    func toggleQuestion(ports: [Int] = [8917, 8918, 8919]) -> String {
-        guard let port = ports.first, let url = URL(string: "http://127.0.0.1:\(port)/question/toggle") else {
-            overlayError("🎙️ DJI link button ×2: Walkie Talkie did not answer on 8917–8919 — no ⚡ question")
+    func toggleQuestion(targets: [WalkieLoopback.Target]? = nil) -> String {
+        let first = targets == nil
+        let targets = targets ?? WalkieLoopback.targets()
+        guard let target = targets.first,
+              let url = URL(string: "http://127.0.0.1:\(target.port)/question/toggle") else {
+            overlayError(first && WalkieLoopback.isStarting()
+                         ? "🎙️ DJI link button ×2: Walkie Talkie is still starting — no ⚡ question"
+                         : "🎙️ DJI link button ×2: Walkie Talkie did not answer — no ⚡ question")
             return "{\"asked\":false}"
         }
-        if ports.count == 3 { overlayInfo("🎙️ DJI link button ×2 → Walkie Talkie's ⚡ quick question (start / end)") }
+        if first { overlayInfo("🎙️ DJI link button ×2 → Walkie Talkie's ⚡ quick question (start / end)") }
         var request = URLRequest(url: url, timeoutInterval: 2)
         request.httpMethod = "POST"
-        // Walkie Talkie gates every loopback route behind a per-launch token since 2026-11-25
-        // (`walkie-talkie/Sources/WalkieTalkie/LoopbackToken.swift`); re-read it on every call,
-        // a relaunch writes a new one.
-        let tokenFile = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".walkie-talkie/test-token")
-        if let token = try? String(contentsOf: tokenFile, encoding: .utf8) {
-            request.setValue(token.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "X-Walkie-Token")
-        }
+        if let token = target.token { request.setValue(token, forHTTPHeaderField: "X-Walkie-Token") }
         URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
             let status = (response as? HTTPURLResponse)?.statusCode
             let body = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
@@ -124,7 +123,7 @@ final class DjiLinkButton {
                 switch (status, result) {
                 case (200, .some(let r)): overlayInfo("🎙️ DJI link button ×2: ⚡ question \(r) — \(why)")
                 case (409, "refused"): overlayInfo("🎙️ DJI link button ×2: no ⚡ question — \(why)")
-                default: self?.toggleQuestion(ports: Array(ports.dropFirst()))
+                default: self?.toggleQuestion(targets: Array(targets.dropFirst()))
                 }
             }
         }.resume()
@@ -302,5 +301,63 @@ final class MicMuteHUDPanel: NSPanel {
     func place(on screen: NSScreen) {
         let f = screen.frame
         setFrameOrigin(NSPoint(x: f.midX - Self.side / 2, y: f.minY + 140))
+    }
+}
+
+/// **Where Walkie Talkie's loopback token may go** (2026-11-25, the Fable review of its
+/// token gate — `walkie-talkie/Sources/WalkieTalkie/LoopbackToken.swift`). Walkie Talkie
+/// writes a new token to `~/.walkie-talkie/test-token` at every launch and the port it
+/// bound to `test-port` (`starting` until its listener is up). The token is sent to that
+/// port only: asking 8917, then 8918, then 8919 with it handed the live token to whatever
+/// answered on a port Walkie Talkie was not on. No `test-port` = a Walkie Talkie from
+/// before it: 8917 alone; neither file = one from before the gate: all three, tokenless.
+/// The files are believed only as regular files of this user, closed to group/other.
+enum WalkieLoopback {
+    struct Target: Equatable {
+        let port: Int
+        let token: String?
+    }
+
+    static let ports = [8917, 8918, 8919]
+
+    static var home: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".walkie-talkie")
+    }
+
+    /// Re-read at every call: a relaunch writes a new token and maybe a new port. The
+    /// token first — Walkie Talkie writes `starting` before a new token, so the two
+    /// always belong to the same launch.
+    static func targets(home: URL = home) -> [Target] {
+        let token = readPrivate(home.appendingPathComponent("test-token")).flatMap { $0.isEmpty ? nil : $0 }
+        let portFile = home.appendingPathComponent("test-port")
+        guard exists(portFile) else {
+            return token.map { [Target(port: 8917, token: $0)] } ?? ports.map { Target(port: $0, token: nil) }
+        }
+        guard let port = readPrivate(portFile).flatMap(Int.init), ports.contains(port) else { return [] }
+        return [Target(port: port, token: token)]
+    }
+
+    static func isStarting(home: URL = home) -> Bool {
+        readPrivate(home.appendingPathComponent("test-port")) == "starting"
+    }
+
+    private static func exists(_ url: URL) -> Bool {
+        var st = stat()
+        return lstat(url.path, &st) == 0
+    }
+
+    /// The trimmed contents of a regular file of this uid with mode `& 077 == 0`, never
+    /// through a symlink — else nil.
+    static func readPrivate(_ url: URL) -> String? {
+        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_uid == getuid(),
+              st.st_mode & 0o077 == 0, st.st_size <= 4096 else { return nil }
+        var bytes = [UInt8](repeating: 0, count: Int(st.st_size))
+        let got = bytes.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
+        guard got >= 0 else { return nil }
+        return String(decoding: bytes.prefix(got), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
