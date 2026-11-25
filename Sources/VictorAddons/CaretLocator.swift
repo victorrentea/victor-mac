@@ -25,11 +25,21 @@ struct CaretContext: Equatable {
     var fontSize: CGFloat?
     var foreground: NSColor?
     var background: NSColor?
+    /// A terminal: AX gives no font there (Terminal.app answers
+    /// `AXAttributedStringForRange` with "unsupported"), but it is always a
+    /// monospaced grid, so the bubble uses the system mono font sized from the
+    /// cell. 1.28 cell-height-per-point is the ratio measured on Victor's
+    /// profile — 23 pt cell at 18 pt (`TerminalFontSize`).
+    var monospaced = false
 
     /// The font the bubble writes the clip in: the one at the caret when AX
     /// named it, otherwise the system font at the size the caret's height
     /// implies (a caret is about one line tall, a line about 1.2 em).
     func font() -> NSFont {
+        if fontName == nil, monospaced {
+            let size = CaretBubblePolicy.fontSize(reported: rect.height / 1.28, caretHeight: rect.height)
+            return .monospacedSystemFont(ofSize: size, weight: .regular)
+        }
         let size = CaretBubblePolicy.fontSize(reported: fontSize, caretHeight: rect.height)
         if let fontName, let font = NSFont(name: fontName, size: size) { return font }
         return .systemFont(ofSize: size)
@@ -37,6 +47,9 @@ struct CaretContext: Equatable {
 }
 
 enum CaretLocator {
+
+    /// Apps whose text is a character grid — see `CaretContext.monospaced`.
+    static let terminalBundleIDs: Set<String> = ["com.apple.Terminal", "com.googlecode.iterm2"]
 
     static func current() -> CaretContext? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
@@ -60,7 +73,8 @@ enum CaretLocator {
         let style = attributes(in: element, at: styleAt)
         return CaretContext(rect: rect,
                             fontName: style.fontName, fontSize: style.fontSize,
-                            foreground: style.foreground, background: style.background)
+                            foreground: style.foreground, background: style.background,
+                            monospaced: terminalBundleIDs.contains(app.bundleIdentifier ?? ""))
     }
 
     // MARK: - AX plumbing

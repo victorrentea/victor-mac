@@ -133,6 +133,12 @@ final class ClipboardHistoryOverlay {
     /// once per gesture — the caret cannot move while the keys are ours — and
     /// `nil` means the centred bezel. See `CaretLocator`.
     private var caret: CaretContext?
+    /// `GET /test/clipboard-history?caret=x,y,h` — used once, by the next open.
+    static var testCaretOverride: CaretContext?
+    /// Opened by that test hook: every render also writes the bubble's pixels
+    /// to `/tmp/clipboard-bubble.png` — a screenshot needs Screen Recording,
+    /// which an agent's shell does not have.
+    private var snapshotsForTest = false
 
     /// Set by `textView` while the body is being built and read by
     /// `statusRow` a moment later: true when the clip did not fit the box and
@@ -239,7 +245,9 @@ final class ClipboardHistoryOverlay {
         // makes a double-tap of ⌘⇧V a plain paste: the first press shows you
         // what a ⌘V would have done, and every further V steps back in time.
         index = 0
-        caret = CaretLocator.current()
+        snapshotsForTest = Self.testCaretOverride != nil
+        caret = Self.testCaretOverride ?? CaretLocator.current()
+        Self.testCaretOverride = nil
         isOpen = true
         watchClicks()
         render()
@@ -604,6 +612,11 @@ final class ClipboardHistoryOverlay {
         panel.invalidateShadow()
         panel.orderFrontRegardless()
         self.panel = panel
+        if snapshotsForTest, let rep = bubble.bitmapImageRepForCachingDisplay(in: bubble.bounds) {
+            bubble.cacheDisplay(in: bubble.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: "/tmp/clipboard-bubble.png"))
+        }
         overlayInfo(String(format: "📋 clip %d/%d as a bubble %@ the caret at %.0f,%.0f (%@ %.0f pt, panel %.0f×%.0f)",
                            index + 1, entries.count, placement.above ? "above" : "below",
                            caret.rect.minX, caret.rect.minY, caret.font().fontName, caret.font().pointSize,

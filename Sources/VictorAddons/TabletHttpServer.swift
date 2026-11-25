@@ -97,7 +97,7 @@ case testTerminalFont
         /// The ⌘⇧V clipboard-history bezel, opened without the keyboard — the
         /// only way to look at it while an agent is working, since pressing the
         /// real shortcut means taking Victor's keyboard.
-        case testClipboardHistory
+        case testClipboardHistory(caret: String?, font: String?)
         case testEmojiPicker(String?)
         case testBrokenKeysPad(String?)
         /// 🟡 Play the capture's cursor mark at the mouse, without taking a shot —
@@ -732,8 +732,20 @@ case testTerminalFont
                 self.onTestTranscriptPicker?(at, pick)
             case .testScreenshotCrop:
                 self.onTestScreenshotCrop?()
-            case .testClipboardHistory:
-                self.onTestClipboardHistory?()
+            case .testClipboardHistory(let caret, let font):
+                // `?caret=x,y,h` (Cocoa coords) stands in for the AX read, so the
+                // bubble can be looked at without focusing a text field.
+                let parts = caret?.split(separator: ",").compactMap { Double($0) } ?? []
+                if parts.count == 3 {
+                    let ctx = CaretContext(rect: CGRect(x: parts[0], y: parts[1], width: 0, height: parts[2]),
+                                           fontName: font, fontSize: nil, foreground: nil, background: nil)
+                    DispatchQueue.main.async {
+                        ClipboardHistoryOverlay.testCaretOverride = ctx
+                        self.onTestClipboardHistory?()
+                    }
+                } else {
+                    self.onTestClipboardHistory?()
+                }
             case .testEmojiPicker(let query):
                 self.onTestEmojiPicker?(query)
             case .testBrokenKeysPad(let at):
@@ -1179,7 +1191,8 @@ case testTerminalFont
         case "/test/screenshot/crop":
             return .testScreenshotCrop
         case "/test/clipboard-history":
-            return .testClipboardHistory
+            return .testClipboardHistory(caret: queryItems.first(where: { $0.name == "caret" })?.value,
+                                         font: queryItems.first(where: { $0.name == "font" })?.value)
         case "/test/emoji-picker":
             return .testEmojiPicker(queryItems.first(where: { $0.name == "q" })?.value)
         case "/test/broken-keys-pad":
