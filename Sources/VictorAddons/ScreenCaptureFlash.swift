@@ -153,6 +153,17 @@ enum ScreenCaptureFlash {
         shot.contents = picture
         shot.contentsGravity = .resize
         shot.frame = from
+        // **A black edge and a shadow under it** (2026-11-25, Victor: *"pune și un
+        // border negru + shadow sub"*): lifted off the screen it was cut from, the
+        // picture reads as a print sliding away rather than a smear of the same
+        // pixels. The path is fixed, so the shadow is not re-derived every frame.
+        shot.borderColor = NSColor.black.cgColor
+        shot.borderWidth = 2
+        shot.shadowColor = NSColor.black.cgColor
+        shot.shadowOpacity = 0.55
+        shot.shadowRadius = 10
+        shot.shadowOffset = CGSize(width: 3, height: -5)
+        shot.shadowPath = CGPath(rect: CGRect(origin: .zero, size: from.size), transform: nil)
         view.layer?.addSublayer(shot)
 
         panel.contentView = view
