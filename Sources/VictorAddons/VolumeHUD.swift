@@ -20,6 +20,15 @@ import CoreGraphics
 /// elsewhere (the menu bar slider, a headset's buttons) show no HUD. A CoreAudio
 /// listener would also catch `CoreAudioManager` ducking the output for every dictation.
 ///
+/// **While a meeting shares the computer's sound, the keys move the speaker, not the share.**
+/// Zoom's *Share sound* (ticked on every share by `ZoomSharePrep`) makes the virtual
+/// `ZoomAudioDevice` the default output and plays the call itself to the real speaker
+/// that was the default before. Moving the default's volume then changed only what the
+/// room hears of the desktop, and the call stayed as loud as before (Victor, 2026-11-25:
+/// *"apăs pe tasta de volum și Zoom-ul a rămas la fel"*). So the last real default is
+/// remembered (a CoreAudio listener, no polling) and the keys go there while a meeting
+/// loopback holds the default. See `VolumeKeyPolicy.target`.
+///
 /// Off with `defaults write ro.victorrentea.macos-addons VolumeHUDEnabled -bool NO`
 /// plus a restart. Test hook: `GET /test/volume-hud?level=0.5&muted=0`.
 final class VolumeHUD {
@@ -33,6 +42,10 @@ final class VolumeHUD {
     private var lastSet: (device: AudioDeviceID, wanted: Float, readBack: Float)?
     private var panel: VolumeHUDPanel?
     private var hideWork: DispatchWorkItem?
+    /// The last default output that was a real device, not a meeting loopback. Guarded by `realLock`.
+    private var lastRealOutput: AudioDeviceID?
+    private let realLock = NSLock()
+    private let defaultWatchQueue = DispatchQueue(label: "ro.victorrentea.macos-addons.volume-hud", qos: .utility)
 
     func start() {
         let stored = UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool
@@ -55,6 +68,7 @@ final class VolumeHUD {
             return
         }
         tapPort = tap
+        watchDefaultOutput()
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         let thread = Thread {
             CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
@@ -64,6 +78,38 @@ final class VolumeHUD {
         thread.name = "VolumeHUD"
         thread.start()
         overlayInfo("🔊 Volume HUD on: volume keys taken over, HUD at the bottom centre")
+    }
+
+    // MARK: - Real output, remembered
+
+    private func watchDefaultOutput() {
+        noteDefaultOutput()
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        let status = AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &addr, defaultWatchQueue) { [weak self] _, _ in
+                self?.noteDefaultOutput()
+            }
+        if status != noErr { overlayError("VolumeHUD: could not watch the default output (OSStatus \(status))") }
+    }
+
+    private func noteDefaultOutput() {
+        guard let id = SystemOutputVolume.defaultOutputDevice(),
+              !VolumeKeyPolicy.isMeetingLoopback(BluetoothOutput.deviceName(id)) else { return }
+        realLock.lock(); lastRealOutput = id; realLock.unlock()
+    }
+
+    /// The device the keys should move: the default output, unless a meeting loopback holds it.
+    private func targetDevice() -> AudioDeviceID? {
+        guard let def = SystemOutputVolume.defaultOutputDevice() else { return nil }
+        let defName = BluetoothOutput.deviceName(def)
+        guard VolumeKeyPolicy.isMeetingLoopback(defName) else { return def }
+        realLock.lock(); let remembered = lastRealOutput; realLock.unlock()
+        let present = BluetoothOutput.outputDevices().map { (id: $0.id, name: $0.name) }
+        return VolumeKeyPolicy.target(defaultDevice: def, defaultName: defName,
+                                      remembered: remembered, present: present)
     }
 
     // MARK: - Tap thread
@@ -90,9 +136,9 @@ final class VolumeHUD {
         return nil
     }
 
-    /// Moves the default output; nil when it has no volume we can set.
+    /// Moves the output the call is heard on; nil when it has no volume we can set.
     private func apply(_ kind: VolumeKeyPolicy.Kind, fine: Bool) -> (level: Float, muted: Bool)? {
-        guard let device = SystemOutputVolume.defaultOutputDevice(),
+        guard let device = targetDevice(),
               let current = SystemOutputVolume.get(device: device) else { return nil }
         let muted = SystemOutputVolume.isMuted(device: device) ?? false
 
@@ -180,6 +226,29 @@ enum VolumeKeyPolicy {
         case 0x0B: return (kind, false)
         default: return nil
         }
+    }
+
+    /// Virtual devices a meeting app makes the default output to capture the computer's
+    /// sound for a share; the call itself plays elsewhere.
+    static let meetingLoopbacks = ["ZoomAudioDevice", "Microsoft Teams Audio"]
+
+    static func isMeetingLoopback(_ name: String) -> Bool {
+        meetingLoopbacks.contains { name.range(of: $0, options: .caseInsensitive) != nil }
+    }
+
+    /// Where a volume key goes. A real default output: itself. A meeting loopback: the
+    /// last real default if it is still connected, else the best device on the router's
+    /// ladder (JBL, Bose…), else the built-in speakers, else the loopback as before.
+    static func target(defaultDevice: AudioDeviceID, defaultName: String,
+                       remembered: AudioDeviceID?,
+                       present: [(id: AudioDeviceID, name: String)]) -> AudioDeviceID {
+        guard isMeetingLoopback(defaultName) else { return defaultDevice }
+        let real = present.filter { !isMeetingLoopback($0.name) && !OutputRouterPolicy.isBlocked($0.name) }
+        if let r = remembered, real.contains(where: { $0.id == r }) { return r }
+        if let best = OutputRouterPolicy.best(of: real.map(\.name)),
+           let hit = real.first(where: { $0.name == best }) { return hit.id }
+        if let builtIn = real.first(where: { $0.name.localizedCaseInsensitiveContains("MacBook") }) { return builtIn.id }
+        return defaultDevice
     }
 
     static func quantize(_ v: Float, steps: Float) -> Float {

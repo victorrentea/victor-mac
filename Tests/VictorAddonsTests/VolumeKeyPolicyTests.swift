@@ -1,4 +1,5 @@
 import XCTest
+import CoreAudio
 @testable import VictorAddons
 
 /// 🔊 The volume keys as the HID tap sees them, and the steps they take.
@@ -50,5 +51,42 @@ final class VolumeKeyPolicyTests: XCTestCase {
     func testMutedShowsTheSlashedSpeaker() {
         XCTAssertEqual(VolumeKeyPolicy.symbol(level: 0.8, muted: true), "speaker.slash.fill")
         XCTAssertEqual(VolumeKeyPolicy.symbol(level: 0.8, muted: false), "speaker.wave.3.fill")
+    }
+
+    // MARK: - Which device a key moves (2026-11-25: Zoom share sound)
+
+    private let zoom: (id: AudioDeviceID, name: String) = (90, "ZoomAudioDevice")
+    private let jbl: (id: AudioDeviceID, name: String) = (40, "Victor's JBL Go 4")
+    private let mac: (id: AudioDeviceID, name: String) = (10, "MacBook Pro Speakers")
+    private let hdmi: (id: AudioDeviceID, name: String) = (20, "M861")
+
+    func testARealDefaultIsMovedItself() {
+        XCTAssertEqual(VolumeKeyPolicy.target(defaultDevice: jbl.id, defaultName: jbl.name,
+                                              remembered: mac.id, present: [mac, jbl, zoom]), jbl.id)
+    }
+
+    /// The bug: sharing with sound, the keys moved ZoomAudioDevice and the call stayed loud.
+    func testZoomShareSoundMovesTheSpeakerTheCallPlaysOn() {
+        XCTAssertEqual(VolumeKeyPolicy.target(defaultDevice: zoom.id, defaultName: zoom.name,
+                                              remembered: hdmi.id, present: [mac, hdmi, jbl, zoom]), hdmi.id)
+    }
+
+    func testTeamsLoopbackIsTreatedTheSame() {
+        let teams: (id: AudioDeviceID, name: String) = (91, "Microsoft Teams Audio")
+        XCTAssertEqual(VolumeKeyPolicy.target(defaultDevice: teams.id, defaultName: teams.name,
+                                              remembered: mac.id, present: [mac, teams]), mac.id)
+    }
+
+    /// Remembered speaker gone (or the app started mid-share): the router's ladder decides.
+    func testWithoutARememberedSpeakerTheLadderWins() {
+        XCTAssertEqual(VolumeKeyPolicy.target(defaultDevice: zoom.id, defaultName: zoom.name,
+                                              remembered: 77, present: [mac, hdmi, jbl, zoom]), jbl.id)
+        XCTAssertEqual(VolumeKeyPolicy.target(defaultDevice: zoom.id, defaultName: zoom.name,
+                                              remembered: nil, present: [hdmi, mac, zoom]), mac.id)
+    }
+
+    func testNothingRealLeftKeepsTheLoopback() {
+        XCTAssertEqual(VolumeKeyPolicy.target(defaultDevice: zoom.id, defaultName: zoom.name,
+                                              remembered: nil, present: [zoom]), zoom.id)
     }
 }
