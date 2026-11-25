@@ -213,3 +213,51 @@ final class DjiNoTxWarning {
         banner = nil
     }
 }
+
+/// 🎤 **The receiver fell off USB while it was the microphone** (2026-11-25,
+/// Victor: *"aveam DJI Mic Mini conectat, verde ambele leduri de pe RX, dar
+/// microfonul activ era Mac"*). At 17:11 that day the receiver vanished from
+/// macOS mid-training — never came back — and the last 15 minutes were
+/// transcribed off the MacBook's microphone with no word said: the monitor
+/// only logged *"status stream ended (unplugged?)"*. The receiver runs on its
+/// own battery, so it stays lit and linked to the TX while the Mac no longer
+/// sees it; the LEDs cannot tell him.
+///
+/// Raises the same red, click-only `MicDeadAlarm` pill as a lost transmitter,
+/// but **only for `linked → absent`**: the DJI was the live mic and is now
+/// gone from the device list. A receiver unplugged with no TX on (`noTx`) was
+/// not being listened to; a status stream that drops and reopens never
+/// reaches `absent`. The pill leaves by itself when the gate says `linked`
+/// again (replugged, TX on) — or with a click, for an unplug on purpose.
+final class DjiUnplugWatch {
+    private let raise: (Date) -> Void
+    private let resume: () -> Void
+    private var previous: DjiSourceGate.State?
+    private(set) var isRaised = false
+
+    init(raise: @escaping (Date) -> Void, resume: @escaping () -> Void) {
+        self.raise = raise
+        self.resume = resume
+    }
+
+    static func text(since: Date) -> String {
+        "🎤 DJI receiver off USB since \(MicDeadAlarm.hhmm(since)) — replug it"
+    }
+
+    static func shouldRaise(from previous: DjiSourceGate.State?, to state: DjiSourceGate.State) -> Bool {
+        previous == .linked && state == .absent
+    }
+
+    /// Feed every gate change (`DjiReceiverMonitor.onSourceGate`).
+    func gateChanged(_ state: DjiSourceGate.State, now: Date = Date()) {
+        defer { previous = state }
+        if Self.shouldRaise(from: previous, to: state) {
+            overlayError("🎤 DJI receiver dropped off USB while it was the mic")
+            isRaised = true
+            raise(now)
+        } else if state == .linked, isRaised {
+            isRaised = false
+            resume()
+        }
+    }
+}

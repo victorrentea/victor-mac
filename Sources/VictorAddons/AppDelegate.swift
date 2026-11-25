@@ -46,6 +46,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     /// 🎤 red sticky tab when the DJI receiver delivers only zeros (dead TX).
     private let micDeadAlarm = MicDeadAlarm()
     private let djiNoTxWarning = DjiNoTxWarning()
+    private lazy var djiUnplugWatch = DjiUnplugWatch(
+        raise: { [weak self] since in
+            self?.micDeadAlarm.raise(since: since, text: DjiUnplugWatch.text(since: since)) },
+        resume: { [weak self] in self?.micDeadAlarm.audioResumed() })
     /// 🎤 the receiver's own status over USB: TX linked + battery gauge.
     private let djiReceiver = DjiReceiverMonitor()
     private lazy var djiBatteryNotice = DjiBatteryNotice(show: { [weak self] text, sound in
@@ -825,6 +829,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         djiReceiver.onSourceGate = { [weak self] state in
             self?.writeDjiGate(state)
             self?.djiNoTxWarning.gateChanged(state)
+            self?.djiUnplugWatch.gateChanged(state)
         }
         djiReceiver.start()
         menuBarManager.djiMenuSuffix = { [weak self] in self?.djiReceiver.menuSuffix() }
