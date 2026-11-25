@@ -62,7 +62,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private var portRefreshTimer: Timer?
     private var stopBlinkTimer: Timer?
     private var stopBlinkAlt: Bool = false
-    /// The 🟥 pause mark's slow blink beside the mic (`MicOverlay.pause`).
+    /// The stopped mic's slow red blink (`MicOverlay.pause`).
     private var pauseBlinkTimer: Timer?
     private var pauseBlinkLit = true
     /// 🟥 Memory pressure — see `MemoryPressurePolicy`. Kept next to the stop
@@ -1452,7 +1452,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     /// **The three rows at the top of the 🎙️ menu, the one in force ticked** (2026-11-25,
     /// Victor: *"pune de fapt 3 opțiuni: 🟢 Transcribing; 🟠 Recording audio; 🟥 stopped. cu
     /// bifa în față pe ce e acum activ. orice setez, la AC se resetează pe verde"*). Each row
-    /// wears the mark the menu bar shows beside the mic in that state (🟢 = no mark).
+    /// wears the colour the menu bar mic takes in that state (🟢 = its plain ink).
     /// 🟠 is one row for two states: listening (the last 10 min in memory, written out when
     /// voices are heard) and recording — he asked for the listener to be 🟠 too.
     enum TranscriptionMenu {
@@ -1783,10 +1783,14 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         let origin = NSPoint(x: (size.width - strSize.width) / 2,
                              y: (size.height - strSize.height) / 2)
         str.draw(at: origin, withAttributes: attrs)
+        if MicOverlay.tints(overlay) {
+            // A colour emoji cannot take the state's colour any other way: flatten it.
+            MicOverlay.ink(overlay, dark: isBarDark).set()
+            NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
+        }
         if let badge = badge, !badge.isEmpty {
             drawBadge(badge, canvas: size)
         }
-        MicOverlay.draw(overlay, dark: isBarDark)
         composite.unlockFocus()
         composite.isTemplate = false
         return composite
@@ -1834,7 +1838,8 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             : nil
         guard let raw = custom ?? NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return nil }
-        let ink: NSColor = dark ? .white : .black
+        // 🟠 / blinking 🟥: the state is the mic's own colour (`MicOverlay`).
+        let ink = MicOverlay.ink(overlay, dark: dark)
         let symbol = NSImage(size: raw.size, flipped: false) { r in
             raw.draw(in: r); ink.set(); r.fill(using: .sourceAtop); return true
         }
@@ -1849,7 +1854,6 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         if let badge = badge, !badge.isEmpty {
             drawBadge(badge, canvas: size)
         }
-        MicOverlay.draw(overlay, dark: dark, micWidth: micWidth)
         composite.unlockFocus()
         composite.isTemplate = false
         return composite

@@ -1,20 +1,15 @@
 import AppKit
 
-/// What the 🎙️ menu-bar item draws **beside** the microphone for the power state
-/// (2026-11-20; beside, not over it, since 2026-11-25 — Victor: *"pune linia
-/// roșie lângă microfon, nu peste microfon"*: across the drawing it hid which mic
-/// it was). On AC and transcribing there is nothing: the icon stays 18 pt wide.
+/// What the 🎙️ menu-bar item shows for the transcription choice: **the colour of the
+/// microphone itself** (2026-11-25, Victor: *"vreau să colorezi iconița microfonului din
+/// menu bar în roșu+blink sau portocaliu, în loc de pătrat și cerc"*). Before that the
+/// state was a 🟥/🟠 emoji in a column beside the mic, and before that strokes over it.
+/// The icon is the mic's own width again in every state, so nothing right of it shifts.
 ///
-/// **Two wide colour emoji since 2026-11-25** (Victor: *"semnul de pauză să fie un 🟥
-/// care blink lent … acel fulger care înseamnă că sunetul se înregistrează → 🟠, tot lat
-/// și el, non-blinking"*). The thin red zig-zag and the two green bars before them were
-/// strokes 2 pt wide — too thin to read at a glance.
-///
-/// - `recording`: on battery, the mics go to disk but nothing is transcribed — a 🟠,
-///   steady.
-/// - `pause`: on battery, not recording — listening for voice, or switched off from the
-///   menu — a 🟥 that blinks slowly; `lit: false` is the dark half of the beat, which
-///   keeps the column so the icons right of it never shift.
+/// - `none`: 🟢 transcribing — the bar's own ink, white or black.
+/// - `recording`: 🟠 recording or listening for voice — orange, steady.
+/// - `pause`: 🟥 stopped — red that blinks slowly; `lit: false` is the dark half of the
+///   beat, drawn in the bar's ink.
 enum MicOverlay: Equatable {
     case none
     case recording
@@ -22,36 +17,22 @@ enum MicOverlay: Equatable {
 
     /// The microphone's own square.
     static let micSide: CGFloat = 18
-    /// The column the mark gets, right of the microphone: room for a whole emoji.
-    static let column: CGFloat = 13
-    /// The mark's side, centred in the column.
-    static let markSide: CGFloat = 11
 
-    /// The whole icon: the mic's square, plus the column when there is a mark.
-    /// `micWidth`: a wide symbol (the laptop) takes more than the square.
+    /// The whole icon: just the mic. `micWidth`: a wide symbol (the laptop) takes more.
     static func canvas(_ overlay: MicOverlay, micWidth: CGFloat = micSide) -> NSSize {
-        NSSize(width: micWidth + (overlay == .none ? 0 : column), height: micSide)
+        NSSize(width: micWidth, height: micSide)
     }
 
-    static func emoji(_ overlay: MicOverlay) -> String? {
+    /// The colour the microphone is drawn in.
+    static func ink(_ overlay: MicOverlay, dark: Bool) -> NSColor {
         switch overlay {
-        case .none, .pause(lit: false): return nil
-        case .recording: return "🟠"
-        case .pause(lit: true): return "🟥"
+        case .none, .pause(lit: false): return dark ? .white : .black
+        case .recording: return .systemOrange
+        case .pause(lit: true): return .systemRed
         }
     }
 
-    /// Draws the mark into the current focus, in the column right of the mic.
-    static func draw(_ overlay: MicOverlay, dark: Bool, micWidth: CGFloat = micSide) {
-        guard let emoji = emoji(overlay) else { return }
-        // Size the font so the glyph's advance is `markSide`, whatever the emoji font's
-        // own padding at this size.
-        let probe: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10)]
-        let probeWidth = max(1, (emoji as NSString).size(withAttributes: probe).width)
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10 * markSide / probeWidth)]
-        let size = (emoji as NSString).size(withAttributes: attrs)
-        (emoji as NSString).draw(at: NSPoint(x: micWidth + (column - size.width) / 2,
-                                             y: (micSide - size.height) / 2),
-                                 withAttributes: attrs)
-    }
+    /// True when the state recolours the mic (a colour emoji fallback is then flattened
+    /// into that colour, or it would not show the state at all).
+    static func tints(_ overlay: MicOverlay) -> Bool { overlay != .none }
 }

@@ -265,13 +265,11 @@ final class BannerBlinkTests: XCTestCase {
 }
 
 final class MicOverlayTests: XCTestCase {
-    /// The mark sits beside the microphone, never over it (2026-11-25).
-    func testTheMarkGetsItsOwnColumn() {
-        XCTAssertEqual(MicOverlay.canvas(.none), NSSize(width: 18, height: 18))
-        XCTAssertEqual(MicOverlay.canvas(.recording), NSSize(width: 31, height: 18))
-        XCTAssertEqual(MicOverlay.canvas(.pause(lit: true)), NSSize(width: 31, height: 18))
-        XCTAssertEqual(MicOverlay.canvas(.pause(lit: false)), NSSize(width: 31, height: 18),
-                       "the dark half of the blink keeps the column")
+    /// No column beside the mic any more: the state is its colour (2026-11-25).
+    func testTheIconIsJustTheMic() {
+        for overlay in [MicOverlay.none, .recording, .pause(lit: true), .pause(lit: false)] {
+            XCTAssertEqual(MicOverlay.canvas(overlay), NSSize(width: 18, height: 18))
+        }
     }
 
     /// Three rows, each wearing the mark the bar shows in its state, the one in force
@@ -286,12 +284,14 @@ final class MicOverlayTests: XCTestCase {
         XCTAssertEqual(M.tooltip(.recording), "Recording for later transcribing")
     }
 
-    /// 🟠 steady while recording or listening, 🟥 blinking while stopped (2026-11-25).
-    func testTheMarksAreTheTwoEmoji() {
-        XCTAssertEqual(MicOverlay.emoji(.recording), "🟠")
-        XCTAssertEqual(MicOverlay.emoji(.pause(lit: true)), "🟥")
-        XCTAssertNil(MicOverlay.emoji(.pause(lit: false)))
-        XCTAssertNil(MicOverlay.emoji(.none))
+    /// Orange steady while recording or listening, red blinking while stopped, the bar's
+    /// own ink while transcribing (2026-11-25).
+    func testTheMicTakesTheStateColour() {
+        XCTAssertEqual(MicOverlay.ink(.none, dark: true), .white)
+        XCTAssertEqual(MicOverlay.ink(.none, dark: false), .black)
+        XCTAssertEqual(MicOverlay.ink(.recording, dark: true), .systemOrange)
+        XCTAssertEqual(MicOverlay.ink(.pause(lit: true), dark: true), .systemRed)
+        XCTAssertEqual(MicOverlay.ink(.pause(lit: false), dark: true), .white, "the dark half of the blink")
     }
 }
 
