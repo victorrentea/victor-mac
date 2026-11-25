@@ -877,9 +877,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 overlayInfo("🎙️ test hook: simulating a press on the receiver's link button")
                 return self.djiLinkButton.pressed()
             case "link-double":
-                // Two presses on it: Walkie Talkie's 🔽 ← (ChatGPT's voice on / off).
+                // Two presses on it: Walkie Talkie's ⚡ quick question, started or ended.
                 overlayInfo("🎙️ test hook: simulating two presses on the receiver's link button")
-                return self.djiLinkButton.toggleChatVoice()
+                return self.djiLinkButton.toggleQuestion()
             case "link-button":
                 return self.djiLinkButton.stateJSON()
             default:

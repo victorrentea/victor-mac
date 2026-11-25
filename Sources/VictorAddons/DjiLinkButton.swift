@@ -20,12 +20,15 @@ import IOKit.hid
 /// while muted, then `mic.fill` for 1.5 s when the voice is back.
 /// If the seize is refused it listens unseized (the volume step comes back) and says so.
 ///
-/// **Two presses = ChatGPT's voice, on / off** (the same evening, Victor: *"click 2x pe
-/// link să pornească, click 2x din nou să oprească chatgpt"*): a second press within
-/// `DjiLinkButtonPolicy.doubleWindow` asks Walkie Talkie for what its 🔽 ← does
-/// (`POST /test/chat-voice` on 8917–8919 — the Codex window, a new voice chat, or the
-/// end of the one that is on). The price is that **a single press mutes
-/// `doubleWindow` later**: it has to wait to learn it was not the first of two.
+/// **Two presses = Walkie Talkie's ⚡ quick question** (2026-11-25, Victor: Link pressed
+/// twice starts the ⚡ question — what 🔼 ← at rest does on the mouse — so he can ask from
+/// across the room; twice again while it records ends it and it is answered). A second
+/// press within `DjiLinkButtonPolicy.doubleWindow` posts `POST /question/toggle` on
+/// 8917–8919: at rest it opens the question, over it it ends it, over any other dictation
+/// Walkie answers 409 and changes nothing. It replaces the evening of 2026-11-16's *two
+/// presses = ChatGPT's voice on / off* (`POST /test/chat-voice`). The price stays that
+/// **a single press mutes `doubleWindow` later**: it has to wait to learn it was not the
+/// first of two.
 ///
 /// The audio interfaces stay CoreAudio's and vendor interface #6 stays
 /// `DjiReceiverMonitor`'s; this touches neither. Test: `GET /test/dji/link-press`.
@@ -70,7 +73,7 @@ final class DjiLinkButton {
     }
 
     /// A press on the receiver: one mutes (once `doubleWindow` has passed with no
-    /// second), two toggle ChatGPT's voice. Main thread.
+    /// second), two start or end Walkie Talkie's ⚡ question. Main thread.
     func press(now: Date = Date()) {
         switch DjiLinkButtonPolicy.onPress(now: now, last: lastPress, waitingForSecond: pendingSingle != nil) {
         case .bounce:
@@ -79,7 +82,7 @@ final class DjiLinkButton {
             lastPress = now
             pendingSingle?.cancel()
             pendingSingle = nil
-            toggleChatVoice()
+            toggleQuestion()
         case .first:
             lastPress = now
             let work = DispatchWorkItem { [weak self] in
@@ -93,14 +96,16 @@ final class DjiLinkButton {
 
     private var pendingSingle: DispatchWorkItem?
 
-    /// Two presses: what Walkie Talkie's 🔽 ← does. First port that answers wins.
+    /// Two presses: Walkie Talkie's ⚡ quick question, started or ended
+    /// (`POST /question/toggle`). The first port whose Walkie answers wins; a 409 is an
+    /// answer (another dictation is recording) and is said, not retried elsewhere.
     @discardableResult
-    func toggleChatVoice(ports: [Int] = [8917, 8918, 8919]) -> String {
-        guard let port = ports.first, let url = URL(string: "http://127.0.0.1:\(port)/test/chat-voice") else {
-            overlayError("🎙️ DJI link button ×2: Walkie Talkie did not answer on 8917–8919 — ChatGPT's voice not toggled")
+    func toggleQuestion(ports: [Int] = [8917, 8918, 8919]) -> String {
+        guard let port = ports.first, let url = URL(string: "http://127.0.0.1:\(port)/question/toggle") else {
+            overlayError("🎙️ DJI link button ×2: Walkie Talkie did not answer on 8917–8919 — no ⚡ question")
             return "{\"asked\":false}"
         }
-        if ports.count == 3 { overlayInfo("🎙️ DJI link button ×2 → ChatGPT voice on / off (asking Walkie Talkie)") }
+        if ports.count == 3 { overlayInfo("🎙️ DJI link button ×2 → Walkie Talkie's ⚡ quick question (start / end)") }
         var request = URLRequest(url: url, timeoutInterval: 2)
         request.httpMethod = "POST"
         // Walkie Talkie gates every loopback route behind a per-launch token since 2026-11-25
@@ -111,9 +116,17 @@ final class DjiLinkButton {
         if let token = try? String(contentsOf: tokenFile, encoding: .utf8) {
             request.setValue(token.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "X-Walkie-Token")
         }
-        URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
-            guard (response as? HTTPURLResponse)?.statusCode != 200 else { return }
-            DispatchQueue.main.async { self?.toggleChatVoice(ports: Array(ports.dropFirst())) }
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            let status = (response as? HTTPURLResponse)?.statusCode
+            let body = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let result = body?["result"] as? String, why = body?["why"] as? String ?? ""
+            DispatchQueue.main.async {
+                switch (status, result) {
+                case (200, .some(let r)): overlayInfo("🎙️ DJI link button ×2: ⚡ question \(r) — \(why)")
+                case (409, "refused"): overlayInfo("🎙️ DJI link button ×2: no ⚡ question — \(why)")
+                default: self?.toggleQuestion(ports: Array(ports.dropFirst()))
+                }
+            }
         }.resume()
         return "{\"asked\":true}"
     }
