@@ -16,6 +16,8 @@ enum BannerAction: String, CaseIterable {
     case later = "Later"
     case open = "Open"
     case dismiss = "Dismiss"
+    /// 📋 A participant's paste: puts its text on the clipboard.
+    case copy = "Copy"
     case snooze = "Snooze"
     case snoozeHour = "Snooze 1h"
     /// The on-battery recording pill: stops the battery recording until the charger is back.
@@ -36,6 +38,7 @@ enum BannerAction: String, CaseIterable {
         case .discard: return .emoji("🗑️")
         case .send: return .symbol("paperplane.fill")
         case .snoozeHour: return .emoji("⏱️")
+        case .copy: return .symbol("doc.on.doc")
         case .stopUntilAC: return .emoji("❌")
         default: return nil
         }

@@ -160,6 +160,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var fxCard: FxCard?
     /// 📷 + PowerPoint icon when the daemon adds a slide to the session's seen deck.
     private var slideSeenToast: SlideSeenToast?
+    private let pasteNotice = PasteNotice()
     private var meetingDetector: MeetingDetector?
     /// 📡 Zoom or Teams screen share, debounced — switches the 🎙️ voice meter.
     private let shareWatch = MeetingShareWatch()
@@ -359,6 +360,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         wsServer.onSlideSeenCaptured = { [weak self] _, _, updated in
             if self?.slideSeenToast == nil { self?.slideSeenToast = SlideSeenToast() }
             self?.slideSeenToast?.show(updated: updated)
+        }
+        // 📋 A participant sent text from the Participant View → a pill with Copy
+        // that stays until dismissed. Already on main.
+        wsServer.onPasteReceived = { [weak self] sender, text in
+            self?.pasteNotice.show(sender: sender, text: text)
         }
         wsServer.start()
         self.wsServer = wsServer

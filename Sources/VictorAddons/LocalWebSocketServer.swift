@@ -26,6 +26,8 @@ class LocalWebSocketServer {
     // Called when the daemon put a slide into the session's "slides seen" deck —
     // a new one (`updated` false) or a new form of one already there. Dispatched on main.
     var onSlideSeenCaptured: ((_ deck: String, _ slide: Int, _ updated: Bool) -> Void)?
+    /// 📋 A participant sent text from the Participant View (`paste_received`).
+    var onPasteReceived: ((_ sender: String, _ text: String) -> Void)?
 
     private var listener: NWListener?
     private var connections: [UUID: NWConnection] = [:]
@@ -295,6 +297,14 @@ class LocalWebSocketServer {
             let updated = (json["change"] as? String) == "updated"
             DispatchQueue.main.async { [weak self] in
                 self?.onSlideSeenCaptured?(deck, slide, updated)
+            }
+        case "paste_received":
+            // A participant's paste → the 📋 pill with Copy. Single consumer, not relayed.
+            let sender = (json["sender"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Someone"
+            let pasted = json["text"] as? String ?? ""
+            guard !pasted.isEmpty else { break }
+            DispatchQueue.main.async { [weak self] in
+                self?.onPasteReceived?(sender, pasted)
             }
         case "ping":
             break  // ignore keep-alive
