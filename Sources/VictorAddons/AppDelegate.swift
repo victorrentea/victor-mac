@@ -97,7 +97,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     /// battery → pause. No schedule, no manual start/stop.
     private var transcriptionController: TranscriptionController?
     /// 👂/🔋 while the microphones are recorded on battery.
-    private let batteryRecordingNotice = BatteryRecordingNotice()
     private var testButtonsBanner: BottomLeftBanner?
     /// `/test/banner/buttons?fresh=1` pills, kept alive while they are up.
     private var testStackBanners: [BottomLeftBanner] = []
@@ -918,15 +917,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
         controller.onStateChanged = { [weak self] state in
             self?.menuBarManager.setTranscriptionPowerState(state)
-            self?.batteryRecordingNotice.update(state)
         }
         menuBarManager.onBatteryChoice = { [weak controller] choice in
             controller?.setBatteryChoice(choice)
-        }
-        // The pill's Stop ❌ only stops the disk: whisper keeps listening and
-        // records again on voice (2026-11-24). `off` is the menu's alone.
-        batteryRecordingNotice.onStop = { [weak controller] in
-            controller?.setBatteryChoice(.listen)
         }
         controller.wakeSentinel = { [weak whisperManager] in
             whisperManager?.wakeSentinel() ?? false
@@ -934,8 +927,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         whisperManager.onSentinelWake = { [weak controller] why in
             controller?.sentinelWoke(why)
         }
-        controller.onSentinelWake = { [weak self] why in
-            self?.batteryRecordingNotice.resumedOnVoice(why)
+        // No pill either way (2026-11-25): the mic icon's red mark says it.
+        controller.onSentinelWake = { why in
+            overlayInfo("👂 battery recording started on its own (\(why))")
         }
         self.transcriptionController = controller
 
@@ -978,7 +972,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         let pm = PowerMonitor()
         pm.onSwitchToBattery = { [weak self, weak controller] in
-            // No banner: the 👂/🔋 pill that the controller raises says it.
+            // No banner, no pill (2026-11-25): the mic icon's mark says it.
             controller?.powerDidChange()
             self?.fluxInboxPoller?.powerDidChange()
         }
@@ -1010,14 +1004,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 if let r = q["record"] { controller.setBatteryChoice(r == "1" ? .record : .off) }
                 if q["listen"] == "1" { controller.setBatteryChoice(.listen) }
                 if let why = q["wake"] { controller.sentinelWoke(why.isEmpty ? "test" : why) }
-                if q["snooze"] == "1" { self.batteryRecordingNotice.snoozeNow() }
-                if q["stop"] == "1" { self.batteryRecordingNotice.stopNow() }
                 let mode = controller.runningMode.map {
                     $0 == .full ? "\"full\"" : $0 == .sentinel ? "\"sentinel\"" : "\"capture-only\""
                 } ?? "null"
                 return "{\"on_ac\":\(PowerMonitor.isOnAC()),\"forced\":\(PowerMonitor.testOverride.map { String($0) } ?? "null"),"
                     + "\"mode\":\(mode),\"whisper_running\":\(self.whisperManager?.isRunning == true),"
-                    + "\"notice\":\(self.batteryRecordingNotice.stateJSON())}"
+                    + "\"state\":\"\(controller.state)\"}"
             }
         }
 

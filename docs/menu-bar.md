@@ -8,7 +8,7 @@ bar's ink, still with the 🟢/🟥 training-assistant badge and the 🟥 memory
 draw — the microphone and whether Whisper hears it — is **🎙️ `MicStatusItem`**, always on the
 bar just left of the V: the roster mic's line drawing (Whisper's source while it runs, else the
 pick, else the system default input mapped onto `MicRoster`), with the state as a corner mark —
-🟥/🟦 blinking = stopped on AC, 🤐 stale, green ⏸ bars = off on battery, red zig-zag across the mic = recording on battery, nothing =
+🟥/🟦 blinking = stopped on AC, 🤐 stale, green ⏸ bars = listening or off on battery, red vertical zig-zag = recording on battery (both in a 6 pt column *beside* the mic since 2026-11-25, not over it), nothing =
 transcribing. A CoreAudio listener redraws it when the default input changes.
 
 **2026-11-20 — every voice row moved under 🎙️** (Victor: *"transcribing, summary, fact check,

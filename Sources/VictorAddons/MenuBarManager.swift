@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 24, 16:22"
+    static let BUILD_TIME = "Nov 25, 11:24"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -1447,7 +1447,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     /// noise would keep waking the listener.
     enum BatteryRecordingMenu {
         static let off = "⏹ Stop recording and listening (until AC)"
-        static let record = "👂 Record audio to transcribe later"
+        static let listen = "👂 Listen, record when voices are heard"
         static let recordNow = "⏺ Record now (keeps the last 10 min)"
 
         static func rows(_ state: TranscriptionController.State)
@@ -1456,7 +1456,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             case .onAC: return []
             case .recordingOnBattery: return [(off, .off)]
             case .listeningOnBattery: return [(recordNow, .record), (off, .off)]
-            case .pausedOnBattery: return [(record, .record)]
+            case .pausedOnBattery: return [(listen, .listen)]
             }
         }
     }
@@ -1719,7 +1719,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private func makeEmojiIcon(_ emoji: String, badge: String? = nil, overlay: MicOverlay = .none) -> NSImage? {
         guard !emoji.isEmpty else { return nil }
         let size = NSSize(width: 18, height: 18)
-        let composite = NSImage(size: size)
+        let composite = NSImage(size: MicOverlay.canvas(overlay))
         composite.lockFocus()
         let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 16)]
         let str = emoji as NSString
@@ -1730,7 +1730,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         if let badge = badge, !badge.isEmpty {
             drawBadge(badge, canvas: size)
         }
-        MicOverlay.draw(overlay, canvas: size, dark: isBarDark)
+        MicOverlay.draw(overlay, dark: isBarDark)
         composite.unlockFocus()
         composite.isTemplate = false
         return composite
@@ -1763,7 +1763,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return nil }
         let size = NSSize(width: 18, height: 18)
-        let composite = NSImage(size: size)
+        let composite = NSImage(size: MicOverlay.canvas(overlay))
         composite.lockFocus()
         let fit = min(1, 17 / max(symbol.size.width, symbol.size.height))
         let drawn = NSSize(width: symbol.size.width * fit, height: symbol.size.height * fit)
@@ -1772,7 +1772,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         if let badge = badge, !badge.isEmpty {
             drawBadge(badge, canvas: size)
         }
-        MicOverlay.draw(overlay, canvas: size, dark: dark)
+        MicOverlay.draw(overlay, dark: dark)
         composite.unlockFocus()
         composite.isTemplate = false
         return composite

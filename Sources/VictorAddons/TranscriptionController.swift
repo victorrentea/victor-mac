@@ -11,15 +11,17 @@ import Foundation
 /// (`whisper-transcribe/battery_audio.py`).
 ///
 /// On battery there are three choices (`BatteryChoice`), all reset by the
-/// charger and all surviving a restart of this app:
-/// - `record` — the default: the microphones go to disk.
-/// - `listen` — the pill's `Stop ❌` (2026-11-24). Nothing reaches the disk,
-///   but whisper keeps listening, holds the last 10 min in memory and, on 30 s
-///   of voice in 2 min or a call starting, writes them out and records again by
-///   itself (`SENTINEL_WAKE`, `sentinelWoke()`). A `Stop ❌` pressed at 12:40
-///   had cost the whole 12:30–13:30 meeting that day.
-/// - `off` — only from the menu, never from the pill: nothing at all, for the
-///   case where the noise around fools the listener (a plane).
+/// charger (to `batteryDefault`) and all surviving a restart of this app:
+/// - `listen` — **the default since 2026-11-25** (it was the on-battery pill's
+///   `Stop ❌` from 2026-11-24). Nothing reaches the disk, but whisper keeps
+///   listening, holds the last 10 min in memory and, on 30 s of voice in 2 min
+///   or a call starting, writes them out and records by itself
+///   (`SENTINEL_WAKE`, `sentinelWoke()`). Victor: *"înregistrezi dacă simți că
+///   e voce în jur"* — and no pill about it (`BatteryRecordingNotice` is gone).
+/// - `record` — the microphones go to disk from the first second (menu's
+///   `Record now`, or a wake).
+/// - `off` — only from the menu: nothing at all, for the case where the noise
+///   around fools the listener (a plane).
 ///
 /// A 60s heartbeat restarts Whisper, in whichever mode the power source asks
 /// for, if it died (crash, OOM, the capture-stall watchdog's exit).
@@ -41,6 +43,9 @@ final class TranscriptionController {
     enum BatteryChoice: String {
         case record, listen, off
     }
+
+    /// What every unplugging starts with.
+    static let batteryDefault: BatteryChoice = .listen
 
     enum State: Equatable {
         case onAC
@@ -83,7 +88,7 @@ final class TranscriptionController {
     /// What to do on battery. Reset by the charger.
     private(set) var batteryChoice: BatteryChoice {
         didSet {
-            if batteryChoice == .record { store.removeObject(forKey: Self.choiceKey) }
+            if batteryChoice == Self.batteryDefault { store.removeObject(forKey: Self.choiceKey) }
             else { store.set(batteryChoice.rawValue, forKey: Self.choiceKey) }
         }
     }
@@ -100,7 +105,7 @@ final class TranscriptionController {
         var saved = store.string(forKey: Self.choiceKey).flatMap(BatteryChoice.init(rawValue:))
         if store.bool(forKey: Self.legacyStoppedKey) { saved = saved ?? .off }
         store.removeObject(forKey: Self.legacyStoppedKey)
-        batteryChoice = isOnAC() ? .record : (saved ?? .record)
+        batteryChoice = isOnAC() ? Self.batteryDefault : (saved ?? Self.batteryDefault)
         // `didSet` does not run in init: starting on AC must forget it here.
         if isOnAC() { store.removeObject(forKey: Self.choiceKey) }
     }
@@ -145,13 +150,13 @@ final class TranscriptionController {
     func powerDidChange() {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            // Plugging in resets the battery choice: the next unplugging records.
-            if self.isOnAC() { self.batteryChoice = .record }
+            // Plugging in resets the battery choice: the next unplugging listens.
+            if self.isOnAC() { self.batteryChoice = Self.batteryDefault }
             self.apply()
         }
     }
 
-    /// The pill's `Stop ❌` (`.listen`) and the menu's rows. Only meaningful on
+    /// The menu's rows. Only meaningful on
     /// battery; on AC it is a no-op, since the charger resets it anyway.
     func setBatteryChoice(_ choice: BatteryChoice) {
         DispatchQueue.main.async { [weak self] in
@@ -178,9 +183,6 @@ final class TranscriptionController {
         guard !isOnAC(), batteryChoice == .listen else { return }
         batteryChoice = .record
         if runningMode == .sentinel { runningMode = .captureOnly }
-        // Before the state change: the quiet "recording again" pill must be up
-        // (and the orange one snoozed) before `recordingOnBattery` is reported,
-        // or the orange pill and its Stop ❌ flash up first.
         onSentinelWake?(why)
         apply()
     }

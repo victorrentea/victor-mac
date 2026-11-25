@@ -57,9 +57,9 @@ final class TranscriptionRestartTests: XCTestCase {
         spin()
         XCTAssertEqual(before.batteryChoice, .off)
         fake.onAC = true
-        XCTAssertEqual(make(fake).batteryChoice, .record)
+        XCTAssertEqual(make(fake).batteryChoice, .listen)
         fake.onAC = false
-        XCTAssertEqual(make(fake).batteryChoice, .record)
+        XCTAssertEqual(make(fake).batteryChoice, .listen)
     }
 
     func testTheRuleItself() {
@@ -69,7 +69,7 @@ final class TranscriptionRestartTests: XCTestCase {
         XCTAssertNil(TranscriptionController.desiredMode(onAC: false, choice: .off))
     }
 
-    func testUnpluggingSwitchesAFullWhisperToCaptureOnly() {
+    func testUnpluggingSwitchesAFullWhisperToTheListener() {
         let fake = Fake(onAC: true)
         let c = make(fake)
         var states: [TranscriptionController.State] = []
@@ -77,8 +77,8 @@ final class TranscriptionRestartTests: XCTestCase {
         c.start(); spin()
         fake.onAC = false
         c.powerDidChange(); spin()
-        XCTAssertEqual(fake.events, ["start full", "stop", "start capture"])
-        XCTAssertEqual(states, [.onAC, .recordingOnBattery])
+        XCTAssertEqual(fake.events, ["start full", "stop", "start listen"])
+        XCTAssertEqual(states, [.onAC, .listeningOnBattery], "records only once voice is heard (2026-11-25)")
     }
 
     func testPluggingInTranscribesAgainAndResetsTheMenuSwitch() {
@@ -86,17 +86,17 @@ final class TranscriptionRestartTests: XCTestCase {
         let c = make(fake)
         c.start(); spin()
         c.setBatteryChoice(.off); spin()
-        XCTAssertEqual(fake.events, ["start capture", "stop"])
+        XCTAssertEqual(fake.events, ["start listen", "stop"])
         XCTAssertFalse(fake.running)
 
         fake.onAC = true
         c.powerDidChange(); spin()
         XCTAssertEqual(fake.events.last, "start full")
-        XCTAssertEqual(c.batteryChoice, .record, "the charger resets the menu's stop")
+        XCTAssertEqual(c.batteryChoice, .listen, "the charger resets the menu's stop")
 
         fake.onAC = false
         c.powerDidChange(); spin()
-        XCTAssertEqual(fake.events.last, "start capture", "the next unplugging records again")
+        XCTAssertEqual(fake.events.last, "start listen", "the next unplugging listens again")
     }
 
     func testTheMenuSwitchDoesNothingOnAC() {
@@ -105,10 +105,10 @@ final class TranscriptionRestartTests: XCTestCase {
         c.start(); spin()
         c.setBatteryChoice(.off); spin()
         XCTAssertEqual(fake.events, ["start full"])
-        XCTAssertEqual(c.batteryChoice, .record)
+        XCTAssertEqual(c.batteryChoice, .listen)
     }
 
-    func testRestartOnBatteryComesBackCaptureOnly() {
+    func testRestartOnBatteryComesBackListening() {
         let fake = Fake(onAC: false)
         fake.running = true
         let c = make(fake)
@@ -118,7 +118,7 @@ final class TranscriptionRestartTests: XCTestCase {
                                    start: { started.append($0); done.fulfill() },
                                    delay: 0.01)
         wait(for: [done], timeout: 2)
-        XCTAssertEqual(started, [.captureOnly], "never a full whisper on battery")
+        XCTAssertEqual(started, [.sentinel], "never a full whisper on battery")
     }
 
     func testRestartWithBatteryRecordingOffOnlyStops() {
@@ -136,8 +136,9 @@ final class TranscriptionRestartTests: XCTestCase {
     }
 }
 
-/// 👂 2026-11-24: the pill's Stop ❌ cost a whole meeting. Now it only stops the
-/// disk; whisper listens and records again on voice, without a restart.
+/// 👂 2026-11-24: the pill's Stop ❌ cost a whole meeting, so it only stopped the
+/// disk; since 2026-11-25 listening is where every unplugging starts. Whisper
+/// records once voice is heard, without a restart.
 final class BatterySentinelTests: XCTestCase {
     private final class Fake {
         var onAC = false
@@ -168,12 +169,11 @@ final class BatterySentinelTests: XCTestCase {
         while Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }
     }
 
-    func testThePillsStopListensInsteadOfStopping() {
+    func testOnBatteryItStartsListening() {
         let fake = Fake()
         let c = make(fake)
         c.start(); spin()
-        c.setBatteryChoice(.listen); spin()
-        XCTAssertEqual(fake.events, ["start capture", "stop", "start listen"])
+        XCTAssertEqual(fake.events, ["start listen"])
         XCTAssertEqual(c.state, .listeningOnBattery)
     }
 
@@ -227,6 +227,13 @@ final class BatterySentinelTests: XCTestCase {
         first.setBatteryChoice(.listen); spin()
         XCTAssertEqual(make(fake).batteryChoice, .listen)
         fake.onAC = true
+        XCTAssertEqual(make(fake).batteryChoice, .listen)
+    }
+
+    func testAnExplicitRecordSurvivesARestart() {
+        let fake = Fake()
+        let first = make(fake)
+        first.setBatteryChoice(.record); spin()
         XCTAssertEqual(make(fake).batteryChoice, .record)
     }
 
@@ -240,50 +247,26 @@ final class BatterySentinelTests: XCTestCase {
         XCTAssertEqual(M.rows(.onAC).map(\.choice), [])
         XCTAssertEqual(M.rows(.recordingOnBattery).map(\.choice), [.off])
         XCTAssertEqual(M.rows(.listeningOnBattery).map(\.choice), [.record, .off])
-        XCTAssertEqual(M.rows(.pausedOnBattery).map(\.choice), [.record])
-    }
-
-    func testTheQuietPillSaysWhy() {
-        XCTAssertEqual(BatteryRecordingNotice.resumedText("call"), "🔴 Call started — recording again")
-        XCTAssertEqual(BatteryRecordingNotice.resumedText("voice:Victor"), "🔴 Heard voices — recording again")
+        XCTAssertEqual(M.rows(.pausedOnBattery).map(\.choice), [.listen])
     }
 }
 
-final class BatteryRecordingNoticeTests: XCTestCase {
-    func testShownWhileRecordingAndHiddenWhileSnoozed() {
-        let now = Date()
-        XCTAssertTrue(BatteryRecordingNotice.shouldShow(recording: true, snoozedUntil: nil, now: now))
-        XCTAssertFalse(BatteryRecordingNotice.shouldShow(recording: false, snoozedUntil: nil, now: now))
-        XCTAssertFalse(BatteryRecordingNotice.shouldShow(
-            recording: true, snoozedUntil: now.addingTimeInterval(60), now: now))
-        XCTAssertTrue(BatteryRecordingNotice.shouldShow(
-            recording: true, snoozedUntil: now.addingTimeInterval(-1), now: now), "the hour is over")
-    }
-
-    func testTheChargerEndsTheSnooze() {
-        // Not `.recordingOnBattery`: that would draw a real panel, which a
-        // test process without NSApp cannot. The snooze bookkeeping is the same.
-        let n = BatteryRecordingNotice(screensProvider: { [] })
-        n.update(.pausedOnBattery)
-        n.snoozeNow()
-        XCTAssertNotNil(n.snoozedUntil)
-        n.update(.onAC)
-        XCTAssertNil(n.snoozedUntil)
-        XCTAssertEqual(BatteryRecordingNotice.snooze, 3600)
-    }
-
-    func testOnlyTheDotBlinksAndItBlinksForever() {
-        XCTAssertEqual(BatteryRecordingNotice.text, "🔋", "the 🔴 and the waveform are pictures")
+final class BannerBlinkTests: XCTestCase {
+    func testTheBlinkIsDiscreteAndForever() {
         let blink = BottomLeftBanner.blinkAnimation()
-        XCTAssertEqual(blink.calculationMode, .discrete, "on battery: no 60 Hz fade")
+        XCTAssertEqual(blink.calculationMode, .discrete, "no 60 Hz fade")
         XCTAssertEqual(blink.duration, 2)
         XCTAssertEqual(blink.repeatCount, .infinity)
         XCTAssertFalse(blink.isRemovedOnCompletion)
     }
+}
 
-    func testTheWaveKeepsWalkiesProportions() {
-        let wave = BatteryRecordingNotice.waveform(height: 28, colour: .white)
-        XCTAssertEqual(wave.size, NSSize(width: 39, height: 28))
+final class MicOverlayTests: XCTestCase {
+    /// The mark sits beside the microphone, never over it (2026-11-25).
+    func testTheMarkGetsItsOwnColumn() {
+        XCTAssertEqual(MicOverlay.canvas(.none), NSSize(width: 18, height: 18))
+        XCTAssertEqual(MicOverlay.canvas(.zigzag), NSSize(width: 24, height: 18))
+        XCTAssertEqual(MicOverlay.canvas(.pause), NSSize(width: 24, height: 18))
     }
 }
 
