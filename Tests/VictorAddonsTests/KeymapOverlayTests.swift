@@ -440,6 +440,8 @@ final class KeymapOverlayTests: XCTestCase {
         // 9 (25) joined on 2026-11-19 with the 🪲 beetle walk, 8 (28) the same day
         // with 🔥 Grilled, 7 (26) on 2026-11-20 with 👁️ the Eye, and 6 (22) the
         // same day with ⚡ unlimited power. 5 (23) joined on 2026-11-24 with 😇 Inarius.
+        // Since 2026-11-25 Q U I O 0 9 8 7 6 5 are Victor Effects' keys (its own tap
+        // draws them), and stay on the sheet for the same reason W does.
         XCTAssertEqual(CommandControlShortcuts.boundKeyCodes, [0, 2, 8, 12, 14, 3, 5, 40, 37, 46, 45, 15, 1, 16, 17, 9, 13, 6, 31, 34, 35, 32, 7, 29, 25, 28, 26, 22, 23])
         XCTAssertEqual(CommandControlShortcuts.labels[22], "power")
         XCTAssertEqual(CommandControlShortcuts.labels[23], "inarius")

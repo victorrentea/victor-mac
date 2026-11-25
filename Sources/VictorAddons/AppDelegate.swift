@@ -2144,21 +2144,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         eventTap.onClaudeWorkspaceHotkey = { [weak menuBarManager] in
             DispatchQueue.main.async { menuBarManager?.openDreamPlainWorkspace() }
         }
-        eventTap.onClaudeMascotHotkey = {
-            // ⌘⌃Q, and the mascot is the whole key (2026-09-09). It began as the
-            // garnish on that key's permissions-bypassed Claude Terminal — the
-            // wave filled the moment before the window appeared — and lost the
-            // terminal (⌘⌃C is the launcher; a key that greets you is not also a
-            // key that leaves a window behind). It also lost the combination for
-            // a day, to ⌃⌥G, until ⌃⌥ became the emoji board on 2026-09-10 and
-            // the goose wanted G back.
-            //
-            // Same as the elephant: the drawing lives in Victor Effects now, so
-            // the key is one fire-and-forget GET. Nothing is reported when that
-            // app is down — a mascot that doesn't wave is not worth a banner
-            // mid-workshop.
-            EffectsProxy.fire("/effect/claude-peek")
-        }
         eventTap.onPlainTerminalHotkey = { [weak menuBarManager] in
             DispatchQueue.main.async { menuBarManager?.openPlainTerminalWorkspace() }
         }
@@ -2210,43 +2195,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
         eventTap.onPasteEmail = {
             DispatchQueue.global(qos: .userInitiated).async { PasteSnippets.paste(PasteSnippets.email) }
-        }
-        eventTap.onShowElephant = {
-            // The elephant draws on the built-in Retina, which Victor Effects
-            // owns since the split — the key stays here, its pixels do not.
-            EffectsProxy.fire("/effect/elephant")
-        }
-        eventTap.onShowOpus = {
-            // Same as the elephant: drawn by Victor Effects, keyed here.
-            EffectsProxy.fire("/effect/opus")
-        }
-        eventTap.onShowFable = {
-            // Same as the elephant: drawn by Victor Effects, keyed here.
-            EffectsProxy.fire("/effect/fable")
-        }
-        eventTap.onShowBugWalk = {
-            // Same as the elephant: drawn by Victor Effects, keyed here.
-            EffectsProxy.fire("/effect/bug")
-        }
-        eventTap.onShowGrilled = {
-            // Same as the elephant: drawn by Victor Effects, keyed here.
-            EffectsProxy.fire("/effect/grilled")
-        }
-        eventTap.onShowEye = {
-            // Same as the elephant: drawn by Victor Effects, keyed here.
-            EffectsProxy.fire("/effect/eye")
-        }
-        eventTap.onShowPower = {
-            // Same as the elephant: drawn by Victor Effects, keyed here.
-            EffectsProxy.fire("/effect/power")
-        }
-        eventTap.onShowInarius = {
-            // Same as the elephant: drawn by Victor Effects, keyed here.
-            EffectsProxy.fire("/effect/inarius")
-        }
-        eventTap.onShowPanda = {
-            // Same as the elephant: drawn by Victor Effects, keyed here.
-            EffectsProxy.fire("/effect/panda")
         }
         eventTap.onPasteCompanyDetails = {
             DispatchQueue.global(qos: .userInitiated).async { PasteSnippets.paste(PasteSnippets.companyDetails) }

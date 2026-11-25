@@ -23,6 +23,10 @@ enum KeymapModifier: String, Equatable {
 /// this combination do on THIS Mac", and a ⌘⌃ shortcut owned by another app is
 /// still an answer to that question. Leaving it blank would say "nothing here",
 /// which is worse than saying who does own it.
+///
+/// **The desktop effects are such keys since 2026-11-25**: Q (wave), U 🐘, I 🐼,
+/// O (Opus), 0 ✨, 9 🪲, 8 🔥, 7 👁️, 6 ⚡, 5 😇 are served by Victor Effects' own
+/// tap (`EffectsHotkeyTap.desktopEffectKeys` there) and stay on this sheet.
 enum CommandControlShortcuts {
     static let labels: [Int: String] = [
         0:  "tile",      // A — tile Terminal windows

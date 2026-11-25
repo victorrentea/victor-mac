@@ -138,11 +138,10 @@ reported — a log line about a missed effect during a workshop is noise):
 | trigger | fires |
 |---|---|
 | participant emoji over the WS (`LocalWebSocketServer.onEmoji`) | `/effect/emoji?e=&count=&glow=` |
-| ⌘⌃U elephant | `/effect/elephant` |
-| ⌘⌃O Opus head | `/effect/opus` |
-| ⌘⌃I panda | `/effect/panda` |
-| ⌘⌃Q Claude mascot | `/effect/claude-peek` |
 | 🏁 `TrainingEndSequence` countdown | `/effect/progress-bar/<s>?rider=🏁`, `/effect/progress-bar/stop` |
+
+The ⌘⌃ desktop-effect keys (Q U I O 0 9 8 7 6 5) were rows of this table until
+2026-11-25; Victor Effects' own tap catches them now (`docs/hotkeys-launchers.md`).
 
 ### The one call inward: ☕
 

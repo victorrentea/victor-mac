@@ -73,11 +73,6 @@ class EventTapManager {
     var onPowerPointStrikethrough: (() -> Void)?
     var onTileTerminals: (() -> Void)?
     var onClaudeWorkspaceHotkey: (() -> Void)?
-    /// ⌘⌃Q — 🤖 the Claude mark waves in from the left of the projected screen
-    /// and leaves again. It sat next to a permissions-bypassed Claude Terminal
-    /// here until the terminal was dropped, spent a day on ⌃⌥G, and came back on
-    /// 2026-09-10 when ⌃⌥ became the emoji board and G was needed for the goose.
-    var onClaudeMascotHotkey: (() -> Void)?
     var onPlainTerminalHotkey: (() -> Void)?
     /// ⌘⌃Y — the same Terminal as ⌘⌃C, running `copilot` instead of `claude`.
     var onCopilotWorkspaceHotkey: (() -> Void)?
@@ -96,40 +91,6 @@ class EventTapManager {
     var onPasteZoomLink: (() -> Void)?
     /// ⌘⌃E — paste Victor's email address.
     var onPasteEmail: (() -> Void)?
-    /// ⌘⌃U — 🐘 the elephant in the room, standing in the left half of the
-    /// screen. T (Trump) is the empty Terminal and E is the email paste; it was
-    /// on O (the orange one) until 2026-10-15, when O went to the Opus head.
-    var onShowElephant: (() -> Void)?
-    /// ⌘⌃O — 🤖 the rusty Opus robot head, cut in at the centre of the screen
-    /// and cut out again a few seconds later.
-    var onShowOpus: (() -> Void)?
-    /// ⌘⌃0 — ✨ Fable descends: a figure of light comes down the middle of the
-    /// screen and bursts, over a transparent background (drawn by Victor Effects).
-    var onShowFable: (() -> Void)?
-    /// ⌘⌃9 — 🪲 a beetle walks from the low right of the screen to the upper
-    /// left, legs looping, and fades where it stops (drawn by Victor Effects).
-    var onShowBugWalk: (() -> Void)?
-    /// ⌘⌃8 — 🔥 two men in suits grilled over a barbecue, flames and question
-    /// marks, over a transparent background (drawn by Victor Effects).
-    var onShowGrilled: (() -> Void)?
-    /// ⌘⌃7 — 👁️ the Eye of the Tower: a burning eye on its tower at the left of
-    /// the screen, its light searching the bottom strip or following the
-    /// pointer below it, the screen dark around it (drawn by Victor Effects).
-    var onShowEye: (() -> Void)?
-    /// ⌘⌃6 — ⚡ unlimited power: two old hands rise from the bottom of the
-    /// screen and loose blue lightning until it fills the screen, then sink
-    /// again, over a transparent background (drawn by Victor Effects).
-    var onShowPower: (() -> Void)?
-    /// ⌘⌃5 — 😇 Inarius: a hooded angel in dark armour comes down from the top
-    /// edge, opens his wings of golden light, beats them and stays, wings open,
-    /// over a transparent background (drawn by Victor Effects). Until 2026-11-24
-    /// he took every other press of ⌘⌃0; Victor gave him his own key.
-    var onShowInarius: (() -> Void)?
-    /// ⌘⌃I — 🐼 the panda, the elephant's twin walking in from the RIGHT edge
-    /// into the right half of the screen. It spent its first morning on ⌃⌥I
-    /// (2026-10-01); it moved next to the elephant so both animals live on
-    /// the same board, on neighbouring keys.
-    var onShowPanda: (() -> Void)?
     /// ⌘⌃R — paste the company's invoicing details (name / VAT code / address).
     var onPasteCompanyDetails: (() -> Void)?
     /// ⌘⌃N — open the "notes" Google Doc in Chrome.
@@ -1398,16 +1359,10 @@ private let VK_I: CGKeyCode = 0x22
             return nil
         }
 
-        // Cmd+Ctrl+Q → 🤖 the Claude mark waves in from the left of the projected
-        // screen (suppress). It spent 2026-09-09 on ⌃⌥G, the day that board was
-        // opened; ⌃⌥ became the emoji board on 2026-09-10 and G went to the goose, so
-        // the wave came back to the key it was written for. NB it shadows macOS's
-        // own ⌃⌘Q "Lock Screen" again: the session tap sees the key first and
-        // swallows it, so the Mac does not lock on that combination.
-        if keyCode == VK_Q && hasCmd && hasCtrl && !hasOpt {
-            DispatchQueue.global().async { [weak self] in self?.onClaudeMascotHotkey?() }
-            return nil
-        }
+        // ⌘⌃Q/U/I/O/0/9/8/7/6/5 — the desktop effects (🤖 Claude wave, 🐘, 🐼, Opus,
+        // ✨ Fable, 🪲, 🔥, 👁️, ⚡, 😇) are NOT bound here since 2026-11-25: Victor
+        // Effects' own tap serves them (`EffectsHotkeyTap.desktopEffectKeys`), next to
+        // the pictures and the sound rules. They stay on the ⌘⌃ sheet, like ⌘⌃W.
 
         // Cmd+Ctrl+G → open Gmail in Chrome (suppress). G for Gmail, which is what
         // the hand reaches for; it used to be ⌘⌃M.
@@ -1448,65 +1403,6 @@ private let VK_I: CGKeyCode = 0x22
         // Cmd+Ctrl+E → paste Victor's email address (suppress)
         if keyCode == VK_E && hasCmd && hasCtrl && !hasOpt {
             DispatchQueue.global().async { [weak self] in self?.onPasteEmail?() }
-            return nil
-        }
-
-        // Cmd+Ctrl+U → 🐘 elephant in the room (suppress). Two modifiers, like
-        // every other key on this board. T and E, the two letters the picture
-        // actually wants, are the empty Terminal and the email paste; it sat on O
-        // (the orange one) until 2026-10-15, when O went to the Opus head and the
-        // elephant moved next door to U, still beside the panda's I.
-        if keyCode == VK_U && hasCmd && hasCtrl && !hasOpt {
-            DispatchQueue.global().async { [weak self] in self?.onShowElephant?() }
-            return nil
-        }
-
-        // Cmd+Ctrl+O → 🤖 the rusty Opus robot head, dead centre (suppress).
-        if keyCode == VK_O && hasCmd && hasCtrl && !hasOpt {
-            DispatchQueue.global().async { [weak self] in self?.onShowOpus?() }
-            return nil
-        }
-
-        // Cmd+Ctrl+0 → ✨ Fable descends, a figure of light over the desktop (suppress).
-        if keyCode == VK_0 && hasCmd && hasCtrl && !hasOpt {
-            DispatchQueue.global().async { [weak self] in self?.onShowFable?() }
-            return nil
-        }
-
-        // Cmd+Ctrl+9 → 🪲 a beetle walks across the screen (suppress).
-        if keyCode == VK_9 && hasCmd && hasCtrl && !hasOpt {
-            DispatchQueue.global().async { [weak self] in self?.onShowBugWalk?() }
-            return nil
-        }
-
-        // Cmd+Ctrl+8 → 🔥 two men grilled over a barbecue (suppress).
-        if keyCode == VK_8 && hasCmd && hasCtrl && !hasOpt {
-            DispatchQueue.global().async { [weak self] in self?.onShowGrilled?() }
-            return nil
-        }
-
-        // Cmd+Ctrl+7 → 👁️ the Eye of the Tower searches the screen (suppress).
-        if keyCode == VK_7 && hasCmd && hasCtrl && !hasOpt {
-            DispatchQueue.global().async { [weak self] in self?.onShowEye?() }
-            return nil
-        }
-
-        // Cmd+Ctrl+6 → ⚡ two hands loose blue lightning over the screen (suppress).
-        if keyCode == VK_6 && hasCmd && hasCtrl && !hasOpt {
-            DispatchQueue.global().async { [weak self] in self?.onShowPower?() }
-            return nil
-        }
-
-        // Cmd+Ctrl+5 → 😇 Inarius comes down and opens his wings (suppress).
-        if keyCode == VK_5 && hasCmd && hasCtrl && !hasOpt {
-            DispatchQueue.global().async { [weak self] in self?.onShowInarius?() }
-            return nil
-        }
-
-        // Cmd+Ctrl+I → 🐼 the panda walks in from the right (suppress). I sits
-        // right next to the elephant's O, so the twins are one hand position.
-        if keyCode == VK_I && hasCmd && hasCtrl && !hasOpt {
-            DispatchQueue.global().async { [weak self] in self?.onShowPanda?() }
             return nil
         }
 
