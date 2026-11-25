@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 25, 21:31"
+    static let BUILD_TIME = "Nov 25, 20:54"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -1820,10 +1820,20 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // a one-colour palette also paints a symbol's fill layer, so `laptopcomputer` came out
         // a solid white slab. Monochrome draws only the outline; `sourceAtop` gives it the ink.
         // The laptop is wide and short, so it gets a bigger, heavier glyph and up to 22 pt.
+        // **The laptop is Victor's own drawing** (2026-11-25): `mic_laptop.png`, an alpha mask
+        // (black line art → opaque) inked like the symbols; the SF `laptopcomputer` stays
+        // only as a fallback if the resource is missing.
         let wide = id == "mac"
         let config = NSImage.SymbolConfiguration(pointSize: wide ? 16 : 14, weight: wide ? .medium : .regular)
             .applying(.preferringMonochrome())
-        guard let raw = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+        let custom: NSImage? = wide
+            ? Bundle.module.url(forResource: "mic_laptop", withExtension: "png").flatMap { url in
+                NSImage(contentsOf: url).map { img in
+                    img.size = NSSize(width: 18 * img.size.width / img.size.height, height: 18); return img
+                }
+            }
+            : nil
+        guard let raw = custom ?? NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return nil }
         let ink: NSColor = dark ? .white : .black
         let symbol = NSImage(size: raw.size, flipped: false) { r in
