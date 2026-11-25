@@ -1830,6 +1830,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         // 🧠 The room's attention, full at the end of each ☕ break, empty 75 min later.
         let brainBattery = BrainBatteryIndicator(breakEndedAt: { [weak self] in self?.menuBarManager.breakEndedAt })
+        brainBattery.lendBreakSubmenu = { [weak self] row in self?.menuBarManager.lendBreakSubmenu(to: row) }
         brainBattery.setVisible(BrainBatterySettings.isEnabled)
         menuBarManager.onToggleBrainBattery = { [weak brainBattery] on in brainBattery?.setVisible(on) }
         self.brainBattery = brainBattery

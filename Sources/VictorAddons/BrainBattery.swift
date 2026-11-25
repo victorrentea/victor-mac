@@ -273,6 +273,10 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let menu = NSMenu()
     private let statusRows = (0..<3).map { _ in NSMenuItem(title: "", action: nil, keyEquivalent: "") }
+    /// ☕️ Break, whose submenu is the 💬 menu's (`MenuBarManager.lendBreakSubmenu`).
+    private let breakRow = NSMenuItem(title: "☕️ Break", action: nil, keyEquivalent: "")
+    /// Set by `AppDelegate`: hands `breakRow` the one ☕️ Break submenu.
+    var lendBreakSubmenu: ((NSMenuItem) -> Void)?
     private var summary: [String] = []
     private var tick: Timer?
     private var blinkTimer: Timer?
@@ -298,6 +302,11 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
             row.isEnabled = false          // grey: information, not an action
             menu.addItem(row)
         }
+        menu.addItem(.separator())
+        // ☕️ Break — the 💬 menu's own submenu, lent on open (`lendBreakSubmenu`), so a
+        // depleted room is one click from its break (2026-11-25).
+        breakRow.isEnabled = true
+        menu.addItem(breakRow)
         menu.addItem(.separator())
         let refill = NSMenuItem(title: "Refill now", action: #selector(refillNow), keyEquivalent: "")
         refill.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refill")
@@ -355,6 +364,9 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) { refresh() }
+
+    /// Before the menu is drawn: borrow the ☕️ Break submenu for `breakRow`.
+    func menuNeedsUpdate(_ menu: NSMenu) { lendBreakSubmenu?(breakRow) }
 
     /// Re-reads the clock; also called the moment a break ends, so the refill
     /// shows at once instead of on the next 10 s tick.
