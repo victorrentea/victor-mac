@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 25, 19:14"
+    static let BUILD_TIME = "Nov 25, 21:31"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -1459,6 +1459,24 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         static let listen = "👂 Listen, record when voices are heard"
         static let recordNow = "⏺ Record now (keeps the last 10 min)"
 
+        /// **The mark beside the mic, said in words** (2026-11-25, Victor: *"pătratul roșu
+        /// trebuie să apară și în meniu undeva, să înțeleg repede de unde vine, ce înseamnă și
+        /// cum se modifică"*). The top row of the 🎙️ menu, the rows that change it right under
+        /// it; nil on AC, where there is no mark.
+        static func status(_ state: TranscriptionController.State) -> String? {
+            switch state {
+            case .onAC: return nil
+            case .recordingOnBattery: return "🟠 On battery: recording, transcribed back on AC"
+            case .listeningOnBattery: return "🟥 On battery: paused, records when voices are heard"
+            case .pausedOnBattery: return "🟥 On battery: paused, not even listening"
+            }
+        }
+
+        static let statusHint = "The mark beside the microphone in the menu bar. On battery nothing is "
+            + "transcribed (Whisper costs too much power): 🟠 = the mic is recorded to disk and transcribed "
+            + "when the Mac is plugged in; 🟥 (blinking) = paused. Change it with the rows below; "
+            + "plugging in the power brings back live transcription."
+
         static func rows(_ state: TranscriptionController.State)
             -> [(title: String, choice: TranscriptionController.BatteryChoice)] {
             switch state {
@@ -1565,8 +1583,16 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         updateTailItem()
         refreshVoiceRecordItem()
         onMenuTick?()   // the 🎬 row's minutes and dollars
-        menu.addItem(transcribeItem)
-        menu.addItem(tailItem)
+        // 🟥/🟠 What the mark beside the mic means, first — then the rows that change it.
+        if let status = BatteryRecordingMenu.status(powerState) {
+            let row = NSMenuItem(title: status, action: nil, keyEquivalent: "")
+            row.isEnabled = false
+            // Disabled (a readout) but not dimmed: an explicit colour survives the dimming.
+            row.attributedTitle = NSAttributedString(string: status, attributes: [
+                .font: NSFont.menuFont(ofSize: 0), .foregroundColor: NSColor.labelColor])
+            row.toolTip = BatteryRecordingMenu.statusHint
+            menu.addItem(row)
+        }
         // 🔋 Only off AC: on AC there is nothing to switch.
         for row in BatteryRecordingMenu.rows(powerState) {
             let item = NSMenuItem(title: row.title, action: #selector(batteryChoiceAction(_:)), keyEquivalent: "")
@@ -1574,8 +1600,12 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             // A tag, not a `representedObject`: the mic-pick rows are found by
             // `representedObject is String`, and a choice string would join them.
             item.tag = [TranscriptionController.BatteryChoice.record, .listen, .off].firstIndex(of: row.choice) ?? 0
+            item.indentationLevel = 1   // under the status row they change
             menu.addItem(item)
         }
+        if BatteryRecordingMenu.status(powerState) != nil { menu.addItem(.separator()) }
+        menu.addItem(transcribeItem)
+        menu.addItem(tailItem)
         for item in [summaryItem, liveCaptionsItem, voiceRecordItem] {
             if let item { menu.addItem(item) }
         }
@@ -1783,23 +1813,34 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     ]
 
     private func makeMicIcon(_ glyph: String, badge: String? = nil, overlay: MicOverlay = .none) -> NSImage? {
-        guard let name = Self.micSymbols[MicRoster.byGlyph(glyph)?.id ?? glyph] else { return nil }
+        let id = MicRoster.byGlyph(glyph)?.id ?? glyph
+        guard let name = Self.micSymbols[id] else { return nil }
         let dark = isBarDark
-        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [dark ? .white : .black]))
-        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+        // **Monochrome, inked by hand** (2026-11-25, Victor on the laptop: *"nu e citibil"*):
+        // a one-colour palette also paints a symbol's fill layer, so `laptopcomputer` came out
+        // a solid white slab. Monochrome draws only the outline; `sourceAtop` gives it the ink.
+        // The laptop is wide and short, so it gets a bigger, heavier glyph and up to 22 pt.
+        let wide = id == "mac"
+        let config = NSImage.SymbolConfiguration(pointSize: wide ? 16 : 14, weight: wide ? .medium : .regular)
+            .applying(.preferringMonochrome())
+        guard let raw = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return nil }
-        let size = NSSize(width: 18, height: 18)
-        let composite = NSImage(size: MicOverlay.canvas(overlay))
-        composite.lockFocus()
-        let fit = min(1, 17 / max(symbol.size.width, symbol.size.height))
+        let ink: NSColor = dark ? .white : .black
+        let symbol = NSImage(size: raw.size, flipped: false) { r in
+            raw.draw(in: r); ink.set(); r.fill(using: .sourceAtop); return true
+        }
+        let fit = min(1, 22 / symbol.size.width, 17 / symbol.size.height)
         let drawn = NSSize(width: symbol.size.width * fit, height: symbol.size.height * fit)
+        let micWidth = max(MicOverlay.micSide, ceil(drawn.width) + 1)
+        let size = NSSize(width: micWidth, height: 18)
+        let composite = NSImage(size: MicOverlay.canvas(overlay, micWidth: micWidth))
+        composite.lockFocus()
         symbol.draw(in: NSRect(x: (size.width - drawn.width) / 2, y: (size.height - drawn.height) / 2,
                                width: drawn.width, height: drawn.height))
         if let badge = badge, !badge.isEmpty {
             drawBadge(badge, canvas: size)
         }
-        MicOverlay.draw(overlay, dark: dark)
+        MicOverlay.draw(overlay, dark: dark, micWidth: micWidth)
         composite.unlockFocus()
         composite.isTemplate = false
         return composite

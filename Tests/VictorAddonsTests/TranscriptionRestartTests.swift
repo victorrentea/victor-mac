@@ -271,6 +271,15 @@ final class MicOverlayTests: XCTestCase {
                        "the dark half of the blink keeps the column")
     }
 
+    /// The 🎙️ menu's top row says the mark in words, and only off AC (2026-11-25).
+    func testTheMenuSaysWhatTheMarkMeans() {
+        typealias M = MenuBarManager.BatteryRecordingMenu
+        XCTAssertNil(M.status(.onAC))
+        XCTAssertTrue(M.status(.recordingOnBattery)!.hasPrefix("🟠"))
+        XCTAssertTrue(M.status(.listeningOnBattery)!.hasPrefix("🟥"))
+        XCTAssertTrue(M.status(.pausedOnBattery)!.hasPrefix("🟥"))
+    }
+
     /// 🟠 steady while recording on battery, 🟥 blinking while paused (2026-11-25).
     func testTheMarksAreTheTwoEmoji() {
         XCTAssertEqual(MicOverlay.emoji(.recording), "🟠")

@@ -28,8 +28,9 @@ enum MicOverlay: Equatable {
     static let markSide: CGFloat = 11
 
     /// The whole icon: the mic's square, plus the column when there is a mark.
-    static func canvas(_ overlay: MicOverlay) -> NSSize {
-        NSSize(width: micSide + (overlay == .none ? 0 : column), height: micSide)
+    /// `micWidth`: a wide symbol (the laptop) takes more than the square.
+    static func canvas(_ overlay: MicOverlay, micWidth: CGFloat = micSide) -> NSSize {
+        NSSize(width: micWidth + (overlay == .none ? 0 : column), height: micSide)
     }
 
     static func emoji(_ overlay: MicOverlay) -> String? {
@@ -41,7 +42,7 @@ enum MicOverlay: Equatable {
     }
 
     /// Draws the mark into the current focus, in the column right of the mic.
-    static func draw(_ overlay: MicOverlay, dark: Bool) {
+    static func draw(_ overlay: MicOverlay, dark: Bool, micWidth: CGFloat = micSide) {
         guard let emoji = emoji(overlay) else { return }
         // Size the font so the glyph's advance is `markSide`, whatever the emoji font's
         // own padding at this size.
@@ -49,7 +50,7 @@ enum MicOverlay: Equatable {
         let probeWidth = max(1, (emoji as NSString).size(withAttributes: probe).width)
         let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10 * markSide / probeWidth)]
         let size = (emoji as NSString).size(withAttributes: attrs)
-        (emoji as NSString).draw(at: NSPoint(x: micSide + (column - size.width) / 2,
+        (emoji as NSString).draw(at: NSPoint(x: micWidth + (column - size.width) / 2,
                                              y: (micSide - size.height) / 2),
                                  withAttributes: attrs)
     }

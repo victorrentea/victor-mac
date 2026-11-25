@@ -6,14 +6,14 @@ What stays a menu row and why; rows removed in favour of the ⌘⌃ cheat-sheet 
 the V-in-a-circle logo (`icon_v.png`, cut from Flaticon's "Letter V" Victor copied) in the
 bar's ink, still with the 🟢/🟥 training-assistant badge and the 🟥 memory plate. What it used to
 draw — the microphone and whether Whisper hears it — is **🎙️ `MicStatusItem`**, always on the
-bar just left of the V: the roster mic's line drawing (the built-in is SF `laptopcomputer` since 2026-11-25, not the apple) (Whisper's source while it runs, else the
+bar just left of the V: the roster mic's line drawing (the built-in is SF `laptopcomputer` since 2026-11-25, not the apple — **monochrome**, 16 pt medium, up to 22 pt wide: a one-colour palette also paints the symbol's fill layer and it read as a white slab) (Whisper's source while it runs, else the
 pick, else the system default input mapped onto `MicRoster`), with the state as a corner mark —
 🟥/🟦 blinking = stopped on AC, 🤐 stale, a slowly blinking 🟥 (1.2 s) = listening or off on battery, a steady 🟠 = recording on battery (both in a 13 pt column *beside* the mic, not over it; the emoji replaced the green ⏸ bars and the red zig-zag on 2026-11-25 — *"tot lat și el"*), nothing =
 transcribing. A CoreAudio listener redraws it when the default input changes.
 
 **2026-11-20 — every voice row moved under 🎙️** (Victor: *"transcribing, summary, fact check,
 live captions, record voice — totul sub meniul de microfon, pentru că sunt legate de voce"*).
-The 💬 menu no longer carries them; the 🎙️ item's menu (`fillMicMenu`) is, top to bottom:
+**Off AC the menu opens on the mark in words** (2026-11-25, `BatteryRecordingMenu.status`: `🟥 On battery: paused, records when voices are heard` / `🟠 On battery: recording, transcribed back on AC`, tooltip with the why), the 🔋 rows that change it indented under it, a line, then the rest. The 💬 menu no longer carries them; the 🎙️ item's menu (`fillMicMenu`) is, top to bottom:
 🎙️ Transcribing (no submenu since 2026-11-20), 🐕 Tail, 🔋 battery recording (off AC only), 💬 Last 1m
 summary ⇒ 📋, 🎬 Live Captions, ⏺️ Record voice snippet, a line, then the
 mic pick — `Auto: 🎙️ > 🎤 > 🏛️ > 🎧 > 💻` + the roster with **no line between them** (2026-11-25; same in Walkie Talkie) (`appendMicRows`), flat, no longer repeated inside the
