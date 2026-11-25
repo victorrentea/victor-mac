@@ -63,6 +63,47 @@ Mac sees it, so a running Flycut never shows its own bezel — but it is still
 there, still recording a second history, still in the login items. Removing it
 is the point of this feature.
 
+## 💬 At the caret: the bubble (2026-11-25)
+
+Victor: *"a bubble on top of the cursor position, cycling through options (text
+or images), and falling back to the current overlay only if accessibility can't
+tell where the cursor is … the same font/face/weight around the cursor"*.
+
+**On ⌘⇧V the text caret of the front app is read once through AX**
+(`CaretLocator`): focused element → `AXSelectedTextRange` →
+`AXBoundsForRange` (a zero-length range; if the app answers that with nothing,
+the character before the caret and its right edge, then the one after it) →
+`AXAttributedStringForRange` on the character before the caret for its
+`AXFont` (PostScript name + size, so face and weight come with it) and colours.
+Every call has a 0.15 s messaging timeout. Electron apps get
+`AXManualAccessibility` set on a miss and one retry; Chrome's
+`AXEnhancedUserInterface` is **not** touched (it breaks window animation and
+tiling).
+
+**Found ⇒ a bubble, not the bezel:**
+
+- **above the caret, tail pointing at it**, below when the screen has no room
+  above; the clip's first character over the caret's x, slid sideways to stay
+  on screen (`CaretBubblePolicy.place`, unit-tested);
+- **text in the caret's font** (size from AX, else the caret's height ÷ 1.2,
+  held to 11–40 pt), in the document's own colours only when AX gives **both**
+  and they contrast ≥ 3:1 — a foreground alone (black text, no background
+  attribute) would vanish on the dark card, so then the bezel's palette;
+- **sized to the clip**, capped at ~45% × 35% of the screen, same
+  as-copied preview and last-line ellipsis as the bezel;
+- **images** fitted in the same cap, never scaled past 1:1, with
+  `Preview` / `Downloads` on the bubble's bottom row beside `3 / 40 · 12 minutes ago`;
+- **no 20% wash**: the bubble is already where the eye is;
+- an accent-coloured outline, so it never reads as part of the document.
+
+**Not found ⇒ the bezel below, exactly as before.** "Not found" includes an
+app that answers `.success` with a 0×0 rectangle, a rectangle off every
+screen, or a height outside 4–300 pt. Same keys, same commit, same click
+rules in both modes.
+
+`curl 127.0.0.1:55123/test/caret` prints what the read sees in the front app
+(caret rect, AX font, resolved font, colours) — `"caret":null` means the bezel.
+
 ## What the bezel shows
 
 One clip at a time, centred on the **screen under the cursor** (never pinned to
@@ -240,7 +281,8 @@ save) are swept on every capture; nothing else would ever reclaim them.
 |---|---|
 | `ClipboardHistoryPolicy.swift` | `ClipboardEntry` + the pure rules (insert/dedup/cap, the two ceilings, the age caption, the text preview) |
 | `ClipboardHistoryStore.swift` | disk, thumbnails, fingerprints, the index, `place()` |
-| `ClipboardHistoryOverlay.swift` | the bezel and its geometry, the image buttons |
+| `ClipboardHistoryOverlay.swift` | the bezel and its geometry, the caret bubble, the image buttons |
+| `CaretLocator.swift` | the AX caret/font read, `CaretBubblePolicy` (pure: plausibility, font size, colours, placement), `/test/caret` |
 | `ClipboardPasteKeystroke.swift` | ⌘V or ⌃V, and the AX read of the window it is about to land in |
 | `EventTapManager.swift` | ⌘⇧V, the key routing while it is up, the ⌘-release |
 | `ClipboardStackManager.swift` | the shared poll that feeds it |

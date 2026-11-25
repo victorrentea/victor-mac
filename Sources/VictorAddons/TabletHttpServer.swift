@@ -41,6 +41,7 @@ class TabletHttpServer {
         case testTranscriptionStart
         case testState
 case testTerminalFont
+        case testCaret
         case testAudioPlaying
     /// Raise the 🎤 DJI dead-transmitter alarm — see docs/testing.md.
     case testMicDead(String?)
@@ -640,6 +641,9 @@ case testTerminalFont
             case .testTerminalFont:
                 contentType = "application/json"
                 body = TerminalFontSizeProbe.json()
+            case .testCaret:
+                contentType = "application/json"
+                body = CaretLocatorProbe.json()
             case .testState:
                 contentType = "application/json"
                 body = self.onTestState?() ?? "{\"error\":\"state unavailable\"}"
@@ -1110,6 +1114,8 @@ case testTerminalFont
             return .testTranscriptionStart
         case "/test/terminal-font":
             return .testTerminalFont
+        case "/test/caret":
+            return .testCaret
         case "/test/state":
             return .testState
         case "/test/audio/playing":

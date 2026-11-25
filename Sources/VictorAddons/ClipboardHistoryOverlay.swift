@@ -127,6 +127,12 @@ final class ClipboardHistoryOverlay {
     /// the previous app's focus, and the honest outcome is "it is on your
     /// clipboard" — see `commit()`.
     private var pastesOnCommit = false
+    /// Where the text caret was when the gesture opened (2026-11-25, Victor:
+    /// *"a bubble on top of the cursor position … falling back to the current
+    /// overlay only if accessibility can't tell where the cursor is"*). Read
+    /// once per gesture — the caret cannot move while the keys are ours — and
+    /// `nil` means the centred bezel. See `CaretLocator`.
+    private var caret: CaretContext?
 
     /// Set by `textView` while the body is being built and read by
     /// `statusRow` a moment later: true when the clip did not fit the box and
@@ -140,7 +146,7 @@ final class ClipboardHistoryOverlay {
     /// "increase the font x2"), then taken back 20% the same night, to 1.6.
     /// The box itself is a quarter of the screen whatever the scale, so a
     /// bigger font means fewer lines of a long clip, not a bigger panel.
-    private static let textScale: CGFloat = 1.6
+    nonisolated private static let textScale: CGFloat = 1.6
 
     // MARK: - Theme
 
@@ -233,6 +239,7 @@ final class ClipboardHistoryOverlay {
         // makes a double-tap of ⌘⇧V a plain paste: the first press shows you
         // what a ⌘V would have done, and every further V steps back in time.
         index = 0
+        caret = CaretLocator.current()
         isOpen = true
         watchClicks()
         render()
@@ -307,6 +314,7 @@ final class ClipboardHistoryOverlay {
 
     func close() {
         isOpen = false
+        caret = nil
         if let globalClickMonitor { NSEvent.removeMonitor(globalClickMonitor) }
         if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
         globalClickMonitor = nil
@@ -381,6 +389,10 @@ final class ClipboardHistoryOverlay {
         // press of V (the `init` observer covers the case where none comes).
         palette = Self.palette(isDark: Self.isDarkNow())
         let entry = entries[index]
+        if let caret {
+            renderBubble(entry, at: caret)
+            return
+        }
         let screen = screenUnderCursor()
         let visible = screen.visibleFrame
         // **The whole screen, not `visibleFrame`**: the menu bar and the Dock
@@ -468,6 +480,164 @@ final class ClipboardHistoryOverlay {
                            panel.frame.origin.x, panel.frame.origin.y, width, height))
     }
 
+    // MARK: - Bubble at the caret
+
+    /// The speech-bubble outline: a rounded card with a tail pointing at the
+    /// caret — down when the bubble is above it, up when there was no room and
+    /// it went below. Drawn, not layered, because the tail is part of the edge.
+    private final class BubbleView: NSView {
+        static let tail: CGFloat = 9, tailHalfWidth: CGFloat = 9, radius: CGFloat = 12
+        var fill = NSColor.black, stroke = NSColor.white
+        var above = true, tailX: CGFloat = 20
+
+        override func draw(_ dirtyRect: NSRect) {
+            let i: CGFloat = 1, w = bounds.width, h = bounds.height
+            let t = Self.tail, r = Self.radius, hw = Self.tailHalfWidth
+            // Built for "above" (tail on the bottom edge), flipped for "below".
+            let path = NSBezierPath()
+            path.move(to: NSPoint(x: i + r, y: t))
+            path.line(to: NSPoint(x: tailX - hw, y: t))
+            path.line(to: NSPoint(x: tailX, y: i))
+            path.line(to: NSPoint(x: tailX + hw, y: t))
+            path.line(to: NSPoint(x: w - i - r, y: t))
+            path.appendArc(from: NSPoint(x: w - i, y: t), to: NSPoint(x: w - i, y: t + r), radius: r)
+            path.line(to: NSPoint(x: w - i, y: h - i - r))
+            path.appendArc(from: NSPoint(x: w - i, y: h - i), to: NSPoint(x: w - i - r, y: h - i), radius: r)
+            path.line(to: NSPoint(x: i + r, y: h - i))
+            path.appendArc(from: NSPoint(x: i, y: h - i), to: NSPoint(x: i, y: h - i - r), radius: r)
+            path.line(to: NSPoint(x: i, y: t + r))
+            path.appendArc(from: NSPoint(x: i, y: t), to: NSPoint(x: i + r, y: t), radius: r)
+            path.close()
+            if !above {
+                var flip = AffineTransform(scaleByX: 1, byY: -1)
+                flip.append(AffineTransform(translationByX: 0, byY: h))
+                path.transform(using: flip)
+            }
+            fill.setFill()
+            path.fill()
+            stroke.setStroke()
+            path.lineWidth = 1.5
+            path.stroke()
+        }
+    }
+
+    /// The clip **at the caret**, in a bubble sized to it (2026-11-25, Victor).
+    ///
+    /// - **Text is written in the caret's own font** — face, weight and size as
+    ///   AX reports them for the character before the caret — and in the
+    ///   document's colours when AX gives both and they read, so the bubble
+    ///   shows the clip roughly as it will look once pasted. Its first
+    ///   character sits over the caret's x.
+    /// - **Above the caret**, tail pointing down at it; below when there is no
+    ///   room. Sized to the clip, capped at ~45% × 35% of the screen.
+    /// - **No wash.** The bezel dims the screen to pull the eye to its middle;
+    ///   the bubble is already where the eye is, and the line being typed into
+    ///   is the context it is read against.
+    /// - **Images** keep their ⬇️ Downloads / 👁 Preview buttons, on the
+    ///   bubble's bottom row, right of the counter.
+    private func renderBubble(_ entry: ClipboardEntry, at caret: CaretContext) {
+        let caretPoint = CGPoint(x: caret.rect.minX, y: caret.rect.midY)
+        let screen = NSScreen.physical.first { $0.frame.contains(caretPoint) } ?? screenUnderCursor()
+        let visible = screen.visibleFrame
+        scrim?.orderOut(nil)
+        scrim = nil
+
+        let colors = CaretBubblePolicy.colors(foreground: caret.foreground, background: caret.background,
+                                              fallbackText: palette.text,
+                                              fallbackBackground: palette.panelBackground)
+        let maxBox = NSSize(width: min(visible.width * 0.45, 900).rounded(),
+                            height: (visible.height * 0.35).rounded())
+        textIsTruncated = false
+        let body: NSView = entry.isImage
+            ? imageView(for: entry, in: maxBox, screen: screen)
+            : bubbleText(for: entry, font: caret.font(), color: colors.text, maxBox: maxBox)
+
+        // One small line under the clip: where you are, and when it was copied.
+        var facts = ["\(index + 1) / \(entries.count)",
+                     ClipboardHistoryPolicy.age(Date().timeIntervalSince(entry.copiedAt))]
+        if case .text(let string) = entry.kind, textIsTruncated { facts.append("\(string.count) chars") }
+        let status = fittedLabel(text: facts.joined(separator: "  ·  "),
+                                 font: .monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+                                 color: colors.text.withAlphaComponent(0.55))
+
+        var buttons: [ClickButton] = []
+        if entry.isImage {
+            let download = downloadButton(for: entry, over: .zero, scale: 0.85)
+            let preview = previewButton(for: entry, leftOf: download.frame, scale: 0.85)
+            buttons = [preview, download]
+        }
+        let buttonGap: CGFloat = 8
+        let buttonsWidth = buttons.reduce(0) { $0 + $1.frame.width } + CGFloat(max(0, buttons.count - 1)) * buttonGap
+        let footerHeight = max(status.frame.height, buttons.map(\.frame.height).max() ?? 0)
+
+        let pad: CGFloat = 10, gap: CGFloat = 6, tail = BubbleView.tail
+        let innerWidth = max(body.frame.width, status.frame.width + (buttons.isEmpty ? 0 : 16 + buttonsWidth))
+        let size = NSSize(width: (innerWidth + 2 * pad).rounded(.up),
+                          height: (pad + body.frame.height + gap + footerHeight + pad + tail).rounded(.up))
+        let placement = CaretBubblePolicy.place(size: size, caret: caret.rect, visible: visible,
+                                                contentInset: pad, tailHalfWidth: BubbleView.tailHalfWidth,
+                                                cornerRadius: BubbleView.radius)
+
+        let bubble = BubbleView(frame: NSRect(origin: .zero, size: size))
+        bubble.fill = colors.background
+        bubble.stroke = NSColor.controlAccentColor.withAlphaComponent(0.9)
+        bubble.above = placement.above
+        bubble.tailX = placement.tailX
+        // Card area = the bubble minus its tail, on whichever side the tail is.
+        let cardBottom: CGFloat = placement.above ? tail : 0
+        let cardTop = cardBottom + size.height - tail
+        body.setFrameOrigin(NSPoint(x: pad, y: cardTop - pad - body.frame.height))
+        status.setFrameOrigin(NSPoint(x: pad, y: cardBottom + pad + (footerHeight - status.frame.height) / 2))
+        bubble.addSubview(body)
+        bubble.addSubview(status)
+        var right = size.width - pad
+        for button in buttons.reversed() {
+            button.setFrameOrigin(NSPoint(x: right - button.frame.width,
+                                          y: cardBottom + pad + (footerHeight - button.frame.height) / 2))
+            right -= button.frame.width + buttonGap
+            bubble.addSubview(button)
+        }
+
+        let panel = self.panel ?? BezelPanel()
+        panel.contentView = bubble
+        panel.setFrame(placement.frame, display: true)
+        panel.invalidateShadow()
+        panel.orderFrontRegardless()
+        self.panel = panel
+        overlayInfo(String(format: "📋 clip %d/%d as a bubble %@ the caret at %.0f,%.0f (%@ %.0f pt, panel %.0f×%.0f)",
+                           index + 1, entries.count, placement.above ? "above" : "below",
+                           caret.rect.minX, caret.rect.minY, caret.font().fontName, caret.font().pointSize,
+                           size.width, size.height))
+    }
+
+    /// The clip's text in the caret's font, as wide as its longest line (up to
+    /// the cap) and as many lines as fit — the same "as copied" preview and the
+    /// same last-line ellipsis as the bezel's `textView`.
+    private func bubbleText(for entry: ClipboardEntry, font: NSFont, color: NSColor, maxBox: NSSize) -> NSView {
+        guard case .text(let string) = entry.kind else { return NSView() }
+        let preview = ClipboardHistoryPolicy.preview(string)
+        let natural = NSAttributedString(string: preview, attributes: [.font: font])
+            .boundingRect(with: NSSize(width: maxBox.width, height: .greatestFiniteMagnitude),
+                          options: [.usesLineFragmentOrigin, .usesFontLeading])
+        let width = min(maxBox.width, max(40, natural.width.rounded(.up) + 4))
+        let field = NSTextField(wrappingLabelWithString: preview)
+        field.font = font
+        field.textColor = color
+        field.drawsBackground = false
+        field.isBezeled = false
+        field.isSelectable = false
+        field.lineBreakMode = .byWordWrapping
+        field.cell?.truncatesLastVisibleLine = true
+        field.preferredMaxLayoutWidth = width
+        field.maximumNumberOfLines = 0
+        let full = field.sizeThatFits(NSSize(width: width, height: .greatestFiniteMagnitude))
+        textIsTruncated = full.height > maxBox.height + 1
+        field.maximumNumberOfLines = max(1, Int(maxBox.height / NSLayoutManager().defaultLineHeight(for: font)))
+        let fitted = field.sizeThatFits(NSSize(width: width, height: .greatestFiniteMagnitude))
+        field.frame = NSRect(x: 0, y: 0, width: width, height: min(fitted.height, maxBox.height))
+        return field
+    }
+
     /// **The box every clip is drawn in: a quarter of the screen's area** —
     /// Victor's size — which is half the width by half the height of the
     /// screen the bezel is on. Constant for that screen, so the panel is the
@@ -514,13 +684,14 @@ final class ClipboardHistoryOverlay {
     /// this one saves whichever clip the walk has reached. A click saves the
     /// full file and closes the bezel, clipboard untouched: saving it *was*
     /// the choice, and a ⌘ released afterwards must not also paste it.
-    private func downloadButton(for entry: ClipboardEntry, over area: NSRect) -> ClickButton {
+    private func downloadButton(for entry: ClipboardEntry, over area: NSRect,
+                                scale: CGFloat = ClipboardHistoryOverlay.textScale) -> ClickButton {
         // **One line, a tray-and-arrow glyph, a rectangle** (2026-09-23, Victor,
         // pointing at the `.md` / `.pdf` download buttons of his own summary
         // page): the SF Symbol is the same open tray with the arrow dropping
         // into it, and `Downloads` says where.
         let button = actionButton(symbol: "square.and.arrow.down", text: "Downloads",
-                                  rightEdge: area.maxX - 10, bottom: area.minY + 10)
+                                  rightEdge: area.maxX - 10, bottom: area.minY + 10, scale: scale)
         button.toolTip = "Save this image to ~/Downloads and show it in Finder"
         button.onClick = { [weak self] in
             guard let self else { return }
@@ -544,9 +715,10 @@ final class ClipboardHistoryOverlay {
     /// picture at full size, to read or mark up. Opened from a copy in the temp
     /// folder, never from the history's own file: Preview saves in place, and a
     /// markup would otherwise rewrite the clip under the bezel's feet.
-    private func previewButton(for entry: ClipboardEntry, leftOf other: NSRect) -> ClickButton {
+    private func previewButton(for entry: ClipboardEntry, leftOf other: NSRect,
+                               scale: CGFloat = ClipboardHistoryOverlay.textScale) -> ClickButton {
         let button = actionButton(symbol: "eye", text: "Preview",
-                                  rightEdge: other.minX - 16, bottom: other.minY)
+                                  rightEdge: other.minX - 16 * scale / Self.textScale, bottom: other.minY, scale: scale)
         button.toolTip = "Open this image in Preview"
         button.onClick = { [weak self] in
             guard let self else { return }
@@ -573,12 +745,13 @@ final class ClipboardHistoryOverlay {
 
     /// One of the image's action buttons: an SF Symbol and a few words on one
     /// line, blue, brightening on hover, its right edge and bottom where asked.
-    private func actionButton(symbol: String, text: String, rightEdge: CGFloat, bottom: CGFloat) -> ClickButton {
-        let font = NSFont.systemFont(ofSize: 14 * Self.textScale, weight: .semibold)
+    private func actionButton(symbol: String, text: String, rightEdge: CGFloat, bottom: CGFloat,
+                              scale: CGFloat = ClipboardHistoryOverlay.textScale) -> ClickButton {
+        let font = NSFont.systemFont(ofSize: 14 * scale, weight: .semibold)
         let ink = NSColor(white: 0.97, alpha: 1)
         let title = NSMutableAttributedString()
         if let glyph = NSImage(systemSymbolName: symbol, accessibilityDescription: text)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15 * Self.textScale, weight: .semibold)
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15 * scale, weight: .semibold)
                 .applying(NSImage.SymbolConfiguration(paletteColors: [ink]))) {
             let attachment = NSTextAttachment()
             attachment.image = glyph
@@ -586,12 +759,12 @@ final class ClipboardHistoryOverlay {
             title.append(NSAttributedString(attachment: attachment))
         }
         title.append(NSAttributedString(string: "  " + text, attributes: [.font: font, .foregroundColor: ink]))
-        let size = NSSize(width: (title.size().width + 28 * Self.textScale).rounded(), height: 36 * Self.textScale)
+        let size = NSSize(width: (title.size().width + 28 * scale).rounded(), height: 36 * scale)
         let button = ClickButton(frame: NSRect(x: rightEdge - size.width, y: bottom,
                                                width: size.width, height: size.height))
         button.isBordered = false
         button.wantsLayer = true
-        button.layer?.cornerRadius = 9 * Self.textScale
+        button.layer?.cornerRadius = 9 * scale
         button.layer?.borderWidth = 1
         button.rest = NSColor(srgbRed: 0.10, green: 0.42, blue: 0.95, alpha: 0.88)
         button.hover = NSColor(srgbRed: 0.24, green: 0.58, blue: 1.00, alpha: 1.00)
