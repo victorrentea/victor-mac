@@ -1,12 +1,12 @@
 import AppKit
 import Foundation
 
-/// **🪄 Victor Mic** — the noise-cancelled microphone, run by its own app
+/// **🪄 Victor Noiseless** — the noise-cancelled microphone, run by its own app
 /// ([`victor-mic`](../../../victor-mic), port **55128**) since 2026-11-20.
 ///
 /// Why another process: the cleaning has to keep running while *this* app is
 /// rebuilt and restarted ten times a day, and a call must not lose its voice
-/// with every deploy. The "Victor Mic" device itself is a HAL driver living
+/// with every deploy. The "Victor Noiseless" device itself is a HAL driver living
 /// in `coreaudiod`, so it never disappears either way; the Victor Mic app only
 /// writes the cleaned voice into it, and only while some app (Zoom, Teams,
 /// Wispr) is reading it.
@@ -73,8 +73,8 @@ final class VictorMicLink {
     /// The 🎙️ menu row: its title, whether it can be clicked, and its tick.
     /// Pure, so every state reads right without a running app.
     static func row(_ s: State?, glyph: (String) -> String?) -> (title: String, enabled: Bool, ticked: Bool) {
-        guard let s else { return ("🪄 Victor Mic — app not running", false, false) }
-        guard s.driver else { return ("🪄 Victor Mic — driver not installed", false, false) }
+        guard let s else { return ("🪄 Victor Noiseless — app not running", false, false) }
+        guard s.driver else { return ("🪄 Victor Noiseless — driver not installed", false, false) }
         let from = s.source.map { name in glyph(name).map { "\($0) \(name)" } ?? name } ?? "no microphone"
         let status: String
         if let error = s.error, s.running || s.source == nil {
@@ -84,6 +84,6 @@ final class VictorMicLink {
         } else {
             status = "idle, no app listening"
         }
-        return ("🪄 Victor Mic — \(status)", true, s.clean)
+        return ("🪄 Victor Noiseless — \(status)", true, s.clean)
     }
 }

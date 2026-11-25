@@ -15,9 +15,9 @@ import Foundation
 /// input `MacBook Pro Microphone`, DJI `Wireless Mic Rx` connected).
 /// A second reader of the same input is fine on macOS — whisper keeps hearing it.
 ///
-/// **Noise-filtered through 🪄 Victor Mic** (2026-11-20, Victor: *"record voice
+/// **Noise-filtered through 🪄 Victor Noiseless** (2026-11-20, Victor: *"record voice
 /// snippet … și trebuie să filtreze zgomotul"*): when the Victor Mic app answers
-/// and its device is present, the take is recorded from "Victor Mic" — the system
+/// and its device is present, the take is recorded from "Victor Noiseless" — the system
 /// default input with DeepFilterNet3 applied live. That default is the same pick
 /// as above (`SystemMicKeeper` keeps it on the 🎙️ menu's choice / the roster
 /// ladder), so filtering does not change *which* microphone is heard. Reading the
@@ -80,7 +80,7 @@ final class VoiceRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
 
     // MARK: device choice (pure, tested)
 
-    /// The CoreAudio UID of the "Victor Mic" input (victor-mic's HAL driver).
+    /// The CoreAudio UID of the "Victor Noiseless" input (victor-mic's HAL driver).
     static let victorMicUID = "VictorMic_UID"
 
     /// Index of the noise-filtered device, when its app is up to feed it.
@@ -124,7 +124,7 @@ final class VoiceRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         let state = VictorMicLink.shared.state
         if let i = Self.pickFiltered(uids: devices.map(\.uniqueID), victorMicUp: state?.driver == true) {
             if state?.clean == false {
-                overlayError("⏺️ Victor Mic is set to raw (A/B) — this snippet is NOT noise-filtered")
+                overlayError("⏺️ Victor Noiseless is set to raw (A/B) — this snippet is NOT noise-filtered")
             }
             return devices[i]
         }

@@ -265,8 +265,18 @@ final class MicOverlayTests: XCTestCase {
     /// The mark sits beside the microphone, never over it (2026-11-25).
     func testTheMarkGetsItsOwnColumn() {
         XCTAssertEqual(MicOverlay.canvas(.none), NSSize(width: 18, height: 18))
-        XCTAssertEqual(MicOverlay.canvas(.zigzag), NSSize(width: 24, height: 18))
-        XCTAssertEqual(MicOverlay.canvas(.pause), NSSize(width: 24, height: 18))
+        XCTAssertEqual(MicOverlay.canvas(.recording), NSSize(width: 31, height: 18))
+        XCTAssertEqual(MicOverlay.canvas(.pause(lit: true)), NSSize(width: 31, height: 18))
+        XCTAssertEqual(MicOverlay.canvas(.pause(lit: false)), NSSize(width: 31, height: 18),
+                       "the dark half of the blink keeps the column")
+    }
+
+    /// 🟠 steady while recording on battery, 🟥 blinking while paused (2026-11-25).
+    func testTheMarksAreTheTwoEmoji() {
+        XCTAssertEqual(MicOverlay.emoji(.recording), "🟠")
+        XCTAssertEqual(MicOverlay.emoji(.pause(lit: true)), "🟥")
+        XCTAssertNil(MicOverlay.emoji(.pause(lit: false)))
+        XCTAssertNil(MicOverlay.emoji(.none))
     }
 }
 

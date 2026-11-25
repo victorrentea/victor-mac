@@ -98,9 +98,10 @@ enum MicRoster {
         neverRecord.contains { deviceName.range(of: $0, options: .caseInsensitive) != nil }
     }
 
-    /// The ladder spelled with the glyphs, for the `Automatic` row — the menu
-    /// says what automatic *does* rather than asking him to remember it.
-    static var ladder: String { all.map(\.glyph).joined(separator: " ▸ ") }
+    /// The ladder spelled with the glyphs, for the `Auto:` row — the menu
+    /// says what automatic *does* rather than asking him to remember it
+    /// (`Auto: 🎙️ > 🎤 > 🏛️ > 🎧 > 💻` since 2026-11-25, Victor: *"Auto: x > y > z"*).
+    static var ladder: String { all.map(\.glyph).joined(separator: " > ") }
 
     static func byId(_ id: String) -> Mic? { all.first { $0.id == id } }
     static func byGlyph(_ glyph: String) -> Mic? { all.first { $0.glyph == glyph } }

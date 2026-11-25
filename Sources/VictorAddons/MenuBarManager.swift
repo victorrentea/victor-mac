@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 25, 18:48"
+    static let BUILD_TIME = "Nov 25, 19:14"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -27,6 +27,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private var menu: NSMenu!
     /// The ☕️ Break parent row, kept so `openBreakMenu` can unfold its submenu.
     private var breakItem: NSMenuItem!
+    /// The ☕️ Break submenu — **one instance**, shown under 💬 › ☕️ Break and lent to the
+    /// 🧠 battery's menu (`lendBreakSubmenu`); `breakSubmenuHolder` is the row holding it now.
+    private var breakSubmenu: NSMenu!
+    private weak var breakSubmenuHolder: NSMenuItem?
     /// Set by `openBreakMenu`, consumed by the next `menuWillOpen`.
     private var unfoldBreakOnOpen = false
     private var isMenuOpen = false
@@ -58,6 +62,9 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private var portRefreshTimer: Timer?
     private var stopBlinkTimer: Timer?
     private var stopBlinkAlt: Bool = false
+    /// The 🟥 pause mark's slow blink beside the mic (`MicOverlay.pause`).
+    private var pauseBlinkTimer: Timer?
+    private var pauseBlinkLit = true
     /// 🟥 Memory pressure — see `MemoryPressurePolicy`. Kept next to the stop
     /// blink because they share the menu bar icon and must not fight over it:
     /// the red plate is drawn *behind* whatever icon the transcription state
@@ -243,7 +250,8 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // actually goes to eat.
         breakItem = NSMenuItem(title: "☕️ Break", action: nil, keyEquivalent: "")
         breakItem.isEnabled = true
-        let breakSubmenu = NSMenu()
+        breakSubmenu = NSMenu()
+        breakSubmenuHolder = breakItem
         breakSubmenu.autoenablesItems = false
         breakSubmenu.delegate = self             // only to stamp `breakSubmenuOpenedAt`
         breakItem.submenu = breakSubmenu
@@ -811,8 +819,19 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         NSApp.postEvent(event, atStart: false)
     }
 
+    /// **The same ☕️ Break submenu under another row** (2026-11-25, Victor: *"să pot da pauza
+    /// și din meniul de creier depleted: același meniu (reuse, nu copy)"*). An `NSMenu` has one
+    /// supermenu, so it moves: whichever menu is opening takes it — the 🧠 battery's on its
+    /// `menuNeedsUpdate`, the 💬 one on its own.
+    func lendBreakSubmenu(to item: NSMenuItem) {
+        guard let breakSubmenu, breakSubmenuHolder !== item else { return }
+        breakSubmenuHolder?.submenu = nil
+        item.submenu = breakSubmenu
+        breakSubmenuHolder = item
+    }
+
     func menuWillOpen(_ menu: NSMenu) {
-        if menu === breakItem?.submenu { breakSubmenuOpenedAt = Date(); return }
+        if menu === breakSubmenu { breakSubmenuOpenedAt = Date(); return }
         guard menu === self.menu else { return }
         isMenuOpen = true
         if unfoldBreakOnOpen {
@@ -849,6 +868,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         guard menu === self.menu else { return }
+        if let breakItem { lendBreakSubmenu(to: breakItem) }
         refreshDynamicItems()
     }
 
@@ -1007,7 +1027,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         voiceRecordItem.title = on ? VoiceRecordMenu.stop : VoiceRecordMenu.start
         voiceRecordItem.toolTip = on
             ? "Stop, save the .m4a and show it in Finder (the red dot in the menu bar does the same)."
-            : "Record the mic transcription hears, noise-filtered through 🪄 Victor Mic, into ~/Downloads; a big red dot appears in the menu bar — click it to stop."
+            : "Record the mic transcription hears, noise-filtered through 🪄 Victor Noiseless, into ~/Downloads; a big red dot appears in the menu bar — click it to stop."
     }
 
     /// The `MicRoster` pattern of the mic transcription last reported, for
@@ -1488,12 +1508,13 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // they replace were too small to tell apart at a glance.
         let mark: String?
         var overlay = MicOverlay.none
-        if isRecordingOnBattery { mark = nil; overlay = .zigzag }
-        else if isListeningOnBattery { mark = nil; overlay = .pause }
-        else if !isTranscribing && isTranscriptionPausedByBattery { mark = nil; overlay = .pause }
+        if isRecordingOnBattery { mark = nil; overlay = .recording }
+        else if isListeningOnBattery { mark = nil; overlay = .pause(lit: pauseBlinkLit) }
+        else if !isTranscribing && isTranscriptionPausedByBattery { mark = nil; overlay = .pause(lit: pauseBlinkLit) }
         else if !isTranscribing { mark = stopBlinkAlt ? "🟦" : "🟥" }
         else if isTranscriptionStale { mark = "🤐" }
         else { mark = nil }
+        updatePauseBlink(overlay)
         micStatusItem.setImage(makeMicIcon(glyph, badge: mark, overlay: overlay)
                                ?? makeEmojiIcon(glyph, badge: mark, overlay: overlay)
                                ?? makeMicIcon("🎙️", badge: mark, overlay: overlay))
@@ -1505,6 +1526,23 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             : !isTranscribing ? "transcription stopped"
             : isTranscriptionStale ? "no words for a while" : "transcribing"
         micStatusItem.setToolTip("Mic: \(name) — \(state)")
+    }
+
+    /// The 🟥 pause mark blinks **slowly** (2026-11-25): 1.2 s lit, 1.2 s dark — slower
+    /// than anything else in the bar, because it means "resting", not "look at me".
+    private func updatePauseBlink(_ overlay: MicOverlay) {
+        guard case .pause = overlay else {
+            pauseBlinkTimer?.invalidate(); pauseBlinkTimer = nil; pauseBlinkLit = true
+            return
+        }
+        guard pauseBlinkTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.2, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.pauseBlinkLit.toggle()
+            self.refreshMicItem()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        pauseBlinkTimer = timer
     }
 
     private func shownMicGlyph() -> String {
@@ -1554,7 +1592,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         }
     }
 
-    /// 🪄 Victor Mic — the noise-cancelled microphone run by the victor-mic app
+    /// 🪄 Victor Noiseless — the noise-cancelled microphone run by the victor-mic app
     /// (`VictorMicLink`). Ticked = cleaning; a click flips to the raw microphone and back.
     private func applyVictorMicRow(_ item: NSMenuItem) {
         let row = VictorMicLink.row(VictorMicLink.shared.state) { name in
@@ -1741,7 +1779,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     /// falls back to the emoji. Reverses 2026-09-28 (the colour 💻 back).
     static let micSymbols: [String: String] = [
         "xlr": "mic", "rx": "music.mic", "stage": "building.columns",
-        "bose": "headphones", "mac": "apple.logo", "👂": "ear",
+        "bose": "headphones", "mac": "laptopcomputer", "👂": "ear",
     ]
 
     private func makeMicIcon(_ glyph: String, badge: String? = nil, overlay: MicOverlay = .none) -> NSImage? {
@@ -1872,18 +1910,18 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         }
     }
 
-    /// Automatic + one row per roster mic, ticked by what was picked — the lower
-    /// half of the 🎙️ mic item's menu. **Automatic first, and it spells the
-    /// ladder out**, the same row in the same words as Walkie Talkie's mic menu:
-    /// the list he reads *is* the preference.
+    /// Auto + one row per roster mic, ticked by what was picked — the lower
+    /// half of the 🎙️ mic item's menu. **Auto first, and it spells the
+    /// ladder out** (`Auto: 🎙️ > 🎤 > …`), the same row in the same words as Walkie
+    /// Talkie's mic menu: the list he reads *is* the preference. No line between it
+    /// and the mics since 2026-11-25 (Victor: *"să nu fie separat cu linie de surse"*).
     private func appendMicRows(to menu: NSMenu) {
-        let auto = NSMenuItem(title: "Automatic — \(MicRoster.ladder)",
+        let auto = NSMenuItem(title: "Auto: \(MicRoster.ladder)",
                               action: #selector(pickSource(_:)), keyEquivalent: "")
         auto.target = self
         auto.representedObject = MicPreference.automatic
         auto.state = (chosenMic == MicPreference.automatic) ? .on : .off
         menu.addItem(auto)
-        menu.addItem(.separator())
 
         for mic in MicRoster.all {
             // Same glyphs as Walkie Talkie's `Mic` submenu, row for row

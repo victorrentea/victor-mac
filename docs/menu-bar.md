@@ -6,9 +6,9 @@ What stays a menu row and why; rows removed in favour of the ⌘⌃ cheat-sheet 
 the V-in-a-circle logo (`icon_v.png`, cut from Flaticon's "Letter V" Victor copied) in the
 bar's ink, still with the 🟢/🟥 training-assistant badge and the 🟥 memory plate. What it used to
 draw — the microphone and whether Whisper hears it — is **🎙️ `MicStatusItem`**, always on the
-bar just left of the V: the roster mic's line drawing (Whisper's source while it runs, else the
+bar just left of the V: the roster mic's line drawing (the built-in is SF `laptopcomputer` since 2026-11-25, not the apple) (Whisper's source while it runs, else the
 pick, else the system default input mapped onto `MicRoster`), with the state as a corner mark —
-🟥/🟦 blinking = stopped on AC, 🤐 stale, green ⏸ bars = listening or off on battery, red vertical zig-zag = recording on battery (both in a 6 pt column *beside* the mic since 2026-11-25, not over it), nothing =
+🟥/🟦 blinking = stopped on AC, 🤐 stale, a slowly blinking 🟥 (1.2 s) = listening or off on battery, a steady 🟠 = recording on battery (both in a 13 pt column *beside* the mic, not over it; the emoji replaced the green ⏸ bars and the red zig-zag on 2026-11-25 — *"tot lat și el"*), nothing =
 transcribing. A CoreAudio listener redraws it when the default input changes.
 
 **2026-11-20 — every voice row moved under 🎙️** (Victor: *"transcribing, summary, fact check,
@@ -16,7 +16,7 @@ live captions, record voice — totul sub meniul de microfon, pentru că sunt le
 The 💬 menu no longer carries them; the 🎙️ item's menu (`fillMicMenu`) is, top to bottom:
 🎙️ Transcribing (no submenu since 2026-11-20), 🐕 Tail, 🔋 battery recording (off AC only), 💬 Last 1m
 summary ⇒ 📋, 🎬 Live Captions, ⏺️ Record voice snippet, a line, then the
-mic pick — Automatic + the roster (`appendMicRows`), flat, no longer repeated inside the
+mic pick — `Auto: 🎙️ > 🎤 > 🏛️ > 🎧 > 💻` + the roster with **no line between them** (2026-11-25; same in Walkie Talkie) (`appendMicRows`), flat, no longer repeated inside the
 Transcribing submenu. The rows are still built in `buildMenu` (`voiceItem`, not `addItem`)
 and re-attached on every open. **The two 🔬 Fact-check rows are gone since 2026-11-25** (Victor: *"scoate fact check menu entries din victor-mac"*): Walkie Talkie's ⚡ question offers the last 30/60 s itself (`docs/recent-speech.md`).
 

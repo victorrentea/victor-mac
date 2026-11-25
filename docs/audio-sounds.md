@@ -195,19 +195,19 @@ ten minutes the same day and was moved here: it is the room's speech, not an eff
 - **No time limit** — a recording is stopped by Victor. A quit waits up to 2 s
   for the file to be finalised (`stopAndWait` in `applicationWillTerminate`);
   an unplugged mic ends the take with an error but keeps the file.
-- **Noise-filtered since 2026-11-20** (Victor: *"record voice snippet … și trebuie să filtreze zgomotul"*; the row was `⏺️ Record voice`). When the 🪄 Victor Mic app answers on 55128 and its device (`VictorMic_UID`) is present, the take is recorded **from "Victor Mic"** — the system default input with DeepFilterNet3 applied live. `SystemMicKeeper` keeps that default on the same pick as the transcription, so filtering does not change which microphone is heard, and reading the device is what wakes the Victor Mic app. With Victor Mic down the raw microphone is recorded as before and an error says the take is unfiltered; with Victor Mic switched to raw (its A/B) the error says that too.
+- **Noise-filtered since 2026-11-20** (Victor: *"record voice snippet … și trebuie să filtreze zgomotul"*; the row was `⏺️ Record voice`). When the 🪄 Victor Mic app answers on 55128 and its device (`VictorMic_UID`) is present, the take is recorded **from "Victor Noiseless"** — the system default input with DeepFilterNet3 applied live. `SystemMicKeeper` keeps that default on the same pick as the transcription, so filtering does not change which microphone is heard, and reading the device is what wakes the Victor Mic app. With Victor Mic down the raw microphone is recorded as before and an error says the take is unfiltered; with Victor Mic switched to raw (its A/B) the error says that too.
 - Tests: `VoiceRecorderTests` (the device choice against the 2026-11-12 desk).
 
-## 🪄 Victor Mic row (`VictorMicLink`, 2026-11-20)
+## 🪄 Victor Noiseless row (`VictorMicLink`, 2026-11-20)
 
 The noise-cancelled microphone is **another app**, `~/workspace/victor-mic` (port 55128). It
 started as the study in `victor-krisp`. It is not in this process because a redeploy here
-must not cut a call's voice. Its HAL driver ("Victor Mic" + hidden "Victor Mic Feed") lives in
+must not cut a call's voice. Its HAL driver ("Victor Noiseless" + hidden "Victor Noiseless Feed"; named "Victor Mic" until 2026-11-25 — the device was renamed, the app and the UIDs were not) lives in
 `coreaudiod` and never disappears on any restart.
 
 - **Source = system default input**, so the 🎙️ pick and `SystemMicKeeper` drive it with no
   extra protocol.
-- **Row** under the roster in the 🎙️ menu: `🪄 Victor Mic — cleaning 🎙️ Elgato Wave XLR`,
+- **Row** under the roster in the 🎙️ menu: `🪄 Victor Noiseless — cleaning 🎙️ Elgato Wave XLR`,
   `idle, no app listening`, `driver not installed`, `app not running`. Ticked = cleaning;
   click = `GET /clean/off|on` (A/B against the raw microphone).
 - State is polled every 5 s (`GET /state`, 1 s timeout) and fetched again when the menu
