@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 25, 20:54"
+    static let BUILD_TIME = "Nov 25, 22:38"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -74,17 +74,16 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private var isMemoryHurting: Bool = false
     private var isTranscribing: Bool = false
     private var isTranscriptionStale: Bool = false
-    /// 🔋 What the power source and the menu switch say whisper should do.
-    private var powerState: TranscriptionController.State = .onAC
-    /// On battery with the recording switched off: nothing runs (the leaf).
-    private var isTranscriptionPausedByBattery: Bool { powerState == .pausedOnBattery }
-    /// On battery, microphones to disk, transcribed on AC (👂).
-    private var isRecordingOnBattery: Bool { powerState == .recordingOnBattery }
-    /// On battery after `Stop ❌`: whisper listens, nothing on disk, records
-    /// again by itself on voice. Drawn like a pause: nothing is being kept.
-    private var isListeningOnBattery: Bool { powerState == .listeningOnBattery }
-    /// The 🔋 rows' clicks. Shown only off AC.
-    var onBatteryChoice: ((TranscriptionController.BatteryChoice) -> Void)?
+    /// 🟢/🟠/🟥 What the 🎙️ menu's choice says whisper should do.
+    private var powerState: TranscriptionController.State = .transcribing
+    /// 🟥 Stopped from the menu: nothing runs.
+    private var isTranscriptionPausedByBattery: Bool { powerState == .stopped }
+    /// 🟠 Microphones to disk, transcribed when 🟢 again.
+    private var isRecordingOnBattery: Bool { powerState == .recording }
+    /// 🟠 Listening: nothing on disk yet, records by itself on voice.
+    private var isListeningOnBattery: Bool { powerState == .listening }
+    /// The 🟢/🟠/🟥 rows' clicks.
+    var onTranscriptionChoice: ((TranscriptionController.Choice) -> Void)?
     private var transcribeSource: String = ""
     private var availableSources: [String] = []
     /// `auto`, or one of `MicRoster.ids`. See `setChosenMic`.
@@ -1450,54 +1449,50 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         if transcribeItem != nil { updateTranscribeTitle() }
     }
 
-    /// The 🔋 rows' titles. Like the 🔴 row, the state is in the words.
-    /// `off` lives only here, never on the pill (Victor, 2026-11-24: *"nu dintr-un
-    /// buton confortabil pe overlay, ci undeva din meniu"*) — for the plane whose
-    /// noise would keep waking the listener.
-    enum BatteryRecordingMenu {
-        // **Each row wears the mark it leads to** (2026-11-25, Victor: *"în meniu tre să
-        // folosești aceleași emoji"*) — 🟠 recording, 🟥 not — never a third set (⏺ ⏹ 👂).
-        static let off = "🟥 Stop recording and listening (until AC)"
-        static let listen = "🟥 Listen, record when voices are heard"
-        static let recordNow = "🟠 Record now (keeps the last 10 min)"
+    /// **The three rows at the top of the 🎙️ menu, the one in force ticked** (2026-11-25,
+    /// Victor: *"pune de fapt 3 opțiuni: 🟢 Transcribing; 🟠 Recording audio; 🟥 stopped. cu
+    /// bifa în față pe ce e acum activ. orice setez, la AC se resetează pe verde"*). Each row
+    /// wears the mark the menu bar shows beside the mic in that state (🟢 = no mark).
+    /// 🟠 is one row for two states: listening (the last 10 min in memory, written out when
+    /// voices are heard) and recording — he asked for the listener to be 🟠 too.
+    enum TranscriptionMenu {
+        typealias Choice = TranscriptionController.Choice
+        typealias State = TranscriptionController.State
 
-        /// **The mark beside the mic, said in words** (2026-11-25, Victor: *"pătratul roșu
-        /// trebuie să apară și în meniu undeva, să înțeleg repede de unde vine, ce înseamnă și
-        /// cum se modifică"*). The top row of the 🎙️ menu, the rows that change it right under
-        /// it; nil on AC, where there is no mark.
-        static func status(_ state: TranscriptionController.State) -> String? {
+        static let rows: [(title: String, choice: Choice, hint: String)] = [
+            ("🟢 Transcribing", .transcribe,
+             "Whisper transcribes live. Plugging in the charger always comes back here."),
+            ("🟠 Recording audio", .listen,
+             "No Whisper: the mic is recorded to disk once voices are heard (the last 10 min are kept), "
+             + "and transcribed when 🟢 Transcribing runs again. Unplugging the charger comes here."),
+            ("🟥 Stopped", .off,
+             "Nothing listens, nothing is recorded — for the plane whose noise would keep waking the recorder."),
+        ]
+
+        /// The row that gets the tick.
+        static func ticked(_ state: State) -> Choice {
             switch state {
-            case .onAC: return nil
-            // Two switches, both named (2026-11-25, Victor: *"transcribing: OFF, recording: ON"*):
-            // the mic open (macOS's orange pill) is not recording — 👂 listening keeps the
-            // last 10 min in memory only, so it is `Recording: OFF` and 🟥.
-            case .recordingOnBattery: return "🟠 Transcribing: OFF · Recording: ON"
-            case .listeningOnBattery: return "🟥 Transcribing: OFF · Recording: OFF (starts on voice)"
-            case .pausedOnBattery: return "🟥 Transcribing: OFF · Recording: OFF · Listening: OFF"
+            case .transcribing: return .transcribe
+            case .recording, .listening: return .listen
+            case .stopped: return .off
             }
         }
 
-        static let statusHint = "The mark beside the microphone in the menu bar. On battery nothing is "
-            + "transcribed (Whisper costs too much power): 🟠 = the mic is recorded to disk and transcribed "
-            + "when the Mac is plugged in; 🟥 (blinking) = not recording — while listening the last 10 min "
-            + "stay in memory and go to disk when voices are heard. Change it with the rows below; "
-            + "plugging in the power brings back live transcription."
-
-        static func rows(_ state: TranscriptionController.State)
-            -> [(title: String, choice: TranscriptionController.BatteryChoice)] {
+        /// The menu bar item's tooltip: the state, in a few words.
+        static func tooltip(_ state: State) -> String {
             switch state {
-            case .onAC: return []
-            case .recordingOnBattery: return [(off, .off)]
-            case .listeningOnBattery: return [(recordNow, .record), (off, .off)]
-            case .pausedOnBattery: return [(listen, .listen)]
+            case .transcribing: return "Transcribing live"
+            case .recording: return "Recording for later transcribing"
+            case .listening: return "Waiting for voices to record them for later transcribing"
+            case .stopped: return "Stopped: not transcribing, not recording"
             }
         }
     }
 
-    @objc private func batteryChoiceAction(_ sender: NSMenuItem) {
-        let all: [TranscriptionController.BatteryChoice] = [.record, .listen, .off]
-        guard all.indices.contains(sender.tag) else { return }
-        onBatteryChoice?(all[sender.tag])
+    @objc private func transcriptionChoiceAction(_ sender: NSMenuItem) {
+        let rows = TranscriptionMenu.rows
+        guard rows.indices.contains(sender.tag) else { return }
+        onTranscriptionChoice?(rows[sender.tag].choice)
     }
 
     private func refreshMenuIcon() {
@@ -1532,8 +1527,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // they replace were too small to tell apart at a glance.
         let mark: String?
         var overlay = MicOverlay.none
-        if isRecordingOnBattery { mark = nil; overlay = .recording }
-        else if isListeningOnBattery { mark = nil; overlay = .pause(lit: pauseBlinkLit) }
+        if isRecordingOnBattery || isListeningOnBattery { mark = nil; overlay = .recording }
         else if !isTranscribing && isTranscriptionPausedByBattery { mark = nil; overlay = .pause(lit: pauseBlinkLit) }
         else if !isTranscribing { mark = stopBlinkAlt ? "🟦" : "🟥" }
         else if isTranscriptionStale { mark = "🤐" }
@@ -1544,12 +1538,12 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                                ?? makeMicIcon("🎙️", badge: mark, overlay: overlay))
         let mic = MicRoster.byGlyph(glyph)
         let name = mic.map { "\($0.glyph) \($0.label)" } ?? glyph.nonBlank(or: "unknown input")
-        let state = isRecordingOnBattery ? "recording on battery"
-            : isListeningOnBattery ? "listening on battery, records again on voice"
-            : (!isTranscribing && isTranscriptionPausedByBattery) ? "transcription off on battery"
-            : !isTranscribing ? "transcription stopped"
-            : isTranscriptionStale ? "no words for a while" : "transcribing"
-        micStatusItem.setToolTip("Mic: \(name) — \(state)")
+        // Short: the state first (2026-11-25, Victor: *"tooltip … să zică scurt care e
+        // starea"*), then the microphone.
+        let state = powerState == .transcribing && !isTranscribing ? "Transcription down, restarting"
+            : powerState == .transcribing && isTranscriptionStale ? "Transcribing, no words for a while"
+            : TranscriptionMenu.tooltip(powerState)
+        micStatusItem.setToolTip("\(state) · \(name)")
     }
 
     /// The 🟥 pause mark blinks **slowly** (2026-11-25): 1.2 s lit, 1.2 s dark — slower
@@ -1589,30 +1583,27 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         updateTailItem()
         refreshVoiceRecordItem()
         onMenuTick?()   // the 🎬 row's minutes and dollars
-        // 🟥/🟠 What the mark beside the mic means, first — then the rows that change it.
-        if let status = BatteryRecordingMenu.status(powerState) {
-            let row = NSMenuItem(title: status, action: nil, keyEquivalent: "")
-            row.isEnabled = false
-            // Disabled (a readout) but not dimmed: an explicit colour survives the dimming.
-            row.attributedTitle = NSAttributedString(string: status, attributes: [
-                .font: NSFont.menuFont(ofSize: 0), .foregroundColor: NSColor.labelColor])
-            row.toolTip = BatteryRecordingMenu.statusHint
-            menu.addItem(row)
-        }
-        // 🔋 Only off AC: on AC there is nothing to switch.
-        for row in BatteryRecordingMenu.rows(powerState) {
-            let item = NSMenuItem(title: row.title, action: #selector(batteryChoiceAction(_:)), keyEquivalent: "")
+        // 🟢/🟠/🟥 The three choices, the one in force ticked, aligned with every other row.
+        let ticked = TranscriptionMenu.ticked(powerState)
+        for (index, row) in TranscriptionMenu.rows.enumerated() {
+            var title = row.title
+            // The DJI's transmitter battery rides on 🟢 while it is the one transcribed
+            // (`🟢 Transcribing · 🎤 DJI 80 %`), as it did on the old Transcribing row.
+            if row.choice == .transcribe, powerState == .transcribing, isTranscribing,
+               let mic = MicRoster.byGlyph(transcribeSource), mic.id == "rx",
+               let dji = djiMenuSuffix?() {
+                title += " · \(mic.glyph) \(mic.short) \(dji)"
+            }
+            let item = NSMenuItem(title: title, action: #selector(transcriptionChoiceAction(_:)), keyEquivalent: "")
             item.target = self
             // A tag, not a `representedObject`: the mic-pick rows are found by
             // `representedObject is String`, and a choice string would join them.
-            item.tag = [TranscriptionController.BatteryChoice.record, .listen, .off].firstIndex(of: row.choice) ?? 0
-            item.indentationLevel = 1   // under the status row they change
+            item.tag = index
+            item.state = row.choice == ticked ? .on : .off
+            item.toolTip = row.hint
             menu.addItem(item)
         }
-        // On battery the status row above already says what the 🎙️ Transcribing row would
-        // (in 👂/🍃, a third set of marks), so that row only shows on AC.
-        if BatteryRecordingMenu.status(powerState) != nil { menu.addItem(.separator()) }
-        else { menu.addItem(transcribeItem) }
+        menu.addItem(.separator())
         menu.addItem(tailItem)
         for item in [summaryItem, liveCaptionsItem, voiceRecordItem] {
             if let item { menu.addItem(item) }
@@ -1742,7 +1733,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // state in the auto-on model (it should always run on AC). Blink the
         // red stop icon to flag it, at any hour. On battery we show the leaf
         // instead, so this never fires there.
-        let isStopped = !isTranscribing && powerState == .onAC
+        let isStopped = !isTranscribing && powerState == .transcribing
         if isStopped {
             if stopBlinkTimer == nil {
                 let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
@@ -1924,21 +1915,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // the row reads in full ink instead of greyed out.
         transcribeItem.isEnabled = true
 
-        if isTranscriptionPausedByBattery {
-            transcribeItem.title = "Off - On Battery"
-            transcribeItem.image = loadResourceIcon("icon_leaf")
-            return
-        }
-        if isListeningOnBattery {
-            transcribeItem.title = "👂 Listening on battery: records again on voice"
-            transcribeItem.image = nil
-            return
-        }
-        if isRecordingOnBattery {
-            // 🔋 The microphones go to disk; the text comes when AC does.
-            let mic = isTranscribing ? MicRoster.byGlyph(transcribeSource) : nil
-            transcribeItem.title = "👂 Recording on battery" + (mic.map { ": \($0.glyph) \($0.short)" } ?? "")
-            transcribeItem.image = nil
+        // Not in the 🎙️ menu since 2026-11-25 (the 🟢/🟠/🟥 rows say it); the title is
+        // still read by the debug endpoint.
+        if powerState != .transcribing {
+            transcribeItem.title = TranscriptionMenu.tooltip(powerState)
             return
         }
 

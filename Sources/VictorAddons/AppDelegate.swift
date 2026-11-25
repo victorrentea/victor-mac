@@ -923,8 +923,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         controller.onStateChanged = { [weak self] state in
             self?.menuBarManager.setTranscriptionPowerState(state)
         }
-        menuBarManager.onBatteryChoice = { [weak controller] choice in
-            controller?.setBatteryChoice(choice)
+        menuBarManager.onTranscriptionChoice = { [weak controller] choice in
+            controller?.setChoice(choice)
         }
         controller.wakeSentinel = { [weak whisperManager] in
             whisperManager?.wakeSentinel() ?? false
@@ -934,7 +934,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
         // No pill either way (2026-11-25): the mic icon's red mark says it.
         controller.onSentinelWake = { why in
-            overlayInfo("👂 battery recording started on its own (\(why))")
+            overlayInfo("🟠 recording started on its own (\(why))")
         }
         self.transcriptionController = controller
 
@@ -1006,8 +1006,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 case "auto": PowerMonitor.testOverride = nil; pm.powerSourceChanged()
                 default: break
                 }
-                if let r = q["record"] { controller.setBatteryChoice(r == "1" ? .record : .off) }
-                if q["listen"] == "1" { controller.setBatteryChoice(.listen) }
+                if let r = q["record"] { controller.setChoice(r == "1" ? .record : .off) }
+                if q["listen"] == "1" { controller.setChoice(.listen) }
+                if q["transcribe"] == "1" { controller.setChoice(.transcribe) }
                 if let why = q["wake"] { controller.sentinelWoke(why.isEmpty ? "test" : why) }
                 let mode = controller.runningMode.map {
                     $0 == .full ? "\"full\"" : $0 == .sentinel ? "\"sentinel\"" : "\"capture-only\""
@@ -2778,28 +2779,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         guard wasTranscribingBeforeSleep else { return }
         wasTranscribingBeforeSleep = false
-        guard PowerMonitor.isOnAC() else {
-            // 🔋 Woke on battery: the recording resumes once CoreAudio settles,
-            // not at the heartbeat's next minute.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                overlayInfo("System woke on battery — resuming the 👂 recording")
-                self?.transcriptionController?.ensureRunning()
-            }
-            return
-        }
+        // Whatever the 🎙️ menu's choice asks for, once CoreAudio settles — not at the
+        // heartbeat's next minute. Through the controller, so a 🟠 or 🟥 picked on AC
+        // is not overruled by a full Whisper on waking.
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self else { return }
-            guard PowerMonitor.isOnAC(), self.whisperManager?.isRunning != true else { return }
-            overlayInfo("System woke — restarting whisper")
-            let env: [String: String] = [
-                "TRANSCRIPTION_FOLDER": self.transcriptionFolder.path,
-                "WHISPER_PREFERRED_SOURCE_FILE": self.transcriptionFolder.appendingPathComponent(".preferred-me-source").path,
-                "WHISPER_DJI_GATE_FILE": self.transcriptionFolder.appendingPathComponent(Self.djiGateFileName).path,
-            ]
-            self.pendingAutoRestartBanner = true
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                self?.whisperManager?.start(env: env)
-            }
+            guard let self, let controller = self.transcriptionController,
+                  self.whisperManager?.isRunning != true, let mode = controller.desiredMode else { return }
+            overlayInfo("System woke — restarting whisper (\(controller.state))")
+            if mode == .full { self.pendingAutoRestartBanner = true }
+            controller.ensureRunning()
         }
     }
 

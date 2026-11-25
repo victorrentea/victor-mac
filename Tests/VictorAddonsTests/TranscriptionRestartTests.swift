@@ -1,15 +1,15 @@
 import XCTest
 @testable import VictorAddons
 
-/// The power rule since 2026-11-03: **AC transcribes, battery only records**,
-/// and the menu can switch the battery recording off until the next AC.
+/// Since 2026-11-25 **three choices on any power source** — 🟢 transcribe, 🟠 listen/record,
+/// 🟥 off — and each change of power source resets them: AC to 🟢, battery to 🟠 listening.
 ///
 /// `restartIfShouldBeRunning` exists because a bare stop/start had a failure
 /// nobody would ever notice: on battery it started a *full* Whisper, and nothing
 /// stopped it again — a 1.8 GB model draining the battery until the charger came
-/// back. It must restart in the mode the power source asks for, or not at all.
+/// back. It must restart in the mode the choice asks for, or not at all.
 final class TranscriptionRestartTests: XCTestCase {
-    private final class Fake {
+    final class Fake {
         var onAC: Bool
         var running = false
         var events: [String] = []
@@ -41,32 +41,43 @@ final class TranscriptionRestartTests: XCTestCase {
         while Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }
     }
 
-    func testARestartOnBatteryKeepsTheRecordingStopped() {
-        let fake = Fake(onAC: false)
-        let before = make(fake)
-        before.setBatteryChoice(.off)
-        spin()
-        XCTAssertEqual(before.batteryChoice, .off)
-        XCTAssertEqual(make(fake).batteryChoice, .off)
-    }
-
-    func testARestartOnTheChargerForgetsTheStop() {
-        let fake = Fake(onAC: false)
-        let before = make(fake)
-        before.setBatteryChoice(.off)
-        spin()
-        XCTAssertEqual(before.batteryChoice, .off)
-        fake.onAC = true
-        XCTAssertEqual(make(fake).batteryChoice, .listen)
-        fake.onAC = false
-        XCTAssertEqual(make(fake).batteryChoice, .listen)
-    }
-
     func testTheRuleItself() {
-        XCTAssertEqual(TranscriptionController.desiredMode(onAC: true, choice: .off), .full)
-        XCTAssertEqual(TranscriptionController.desiredMode(onAC: false, choice: .record), .captureOnly)
-        XCTAssertEqual(TranscriptionController.desiredMode(onAC: false, choice: .listen), .sentinel)
-        XCTAssertNil(TranscriptionController.desiredMode(onAC: false, choice: .off))
+        XCTAssertEqual(TranscriptionController.desiredMode(.transcribe), .full)
+        XCTAssertEqual(TranscriptionController.desiredMode(.record), .captureOnly)
+        XCTAssertEqual(TranscriptionController.desiredMode(.listen), .sentinel)
+        XCTAssertNil(TranscriptionController.desiredMode(.off))
+    }
+
+    func testEachPowerSourceStartsWithItsDefault() {
+        XCTAssertEqual(make(Fake(onAC: true)).choice, .transcribe)
+        XCTAssertEqual(make(Fake(onAC: false)).choice, .listen)
+    }
+
+    func testARestartKeepsTheChoiceOnTheSamePowerSource() {
+        let fake = Fake(onAC: false)
+        let onBattery = make(fake)
+        onBattery.setChoice(.off); spin()
+        XCTAssertEqual(make(fake).choice, .off)
+        fake.onAC = true
+        let onAC = make(fake)
+        onAC.setChoice(.listen); spin()
+        XCTAssertEqual(make(fake).choice, .listen, "a choice made on AC survives a restart on AC")
+    }
+
+    func testARestartOnTheOtherPowerSourceForgetsTheChoice() {
+        let fake = Fake(onAC: false)
+        let first = make(fake)
+        first.setChoice(.off); spin()
+        fake.onAC = true
+        XCTAssertEqual(make(fake).choice, .transcribe)
+    }
+
+    func testTheOldBatteryKeysAreReadOnce() {
+        store.set(true, forKey: "TranscriptionController.batteryRecordingStopped")
+        XCTAssertEqual(make(Fake(onAC: false)).choice, .off)
+        XCTAssertEqual(make(Fake(onAC: false)).choice, .listen, "gone after the first read")
+        store.set("record", forKey: "TranscriptionController.batteryChoice")
+        XCTAssertEqual(make(Fake(onAC: false)).choice, .record)
     }
 
     func testUnpluggingSwitchesAFullWhisperToTheListener() {
@@ -78,34 +89,43 @@ final class TranscriptionRestartTests: XCTestCase {
         fake.onAC = false
         c.powerDidChange(); spin()
         XCTAssertEqual(fake.events, ["start full", "stop", "start listen"])
-        XCTAssertEqual(states, [.onAC, .listeningOnBattery], "records only once voice is heard (2026-11-25)")
+        XCTAssertEqual(states, [.transcribing, .listening])
     }
 
-    func testPluggingInTranscribesAgainAndResetsTheMenuSwitch() {
+    func testPluggingInResetsAnyChoiceToTranscribing() {
         let fake = Fake(onAC: false)
         let c = make(fake)
         c.start(); spin()
-        c.setBatteryChoice(.off); spin()
+        c.setChoice(.off); spin()
         XCTAssertEqual(fake.events, ["start listen", "stop"])
-        XCTAssertFalse(fake.running)
-
         fake.onAC = true
         c.powerDidChange(); spin()
         XCTAssertEqual(fake.events.last, "start full")
-        XCTAssertEqual(c.batteryChoice, .listen, "the charger resets the menu's stop")
-
+        XCTAssertEqual(c.choice, .transcribe)
+        c.setChoice(.off); spin()
         fake.onAC = false
         c.powerDidChange(); spin()
-        XCTAssertEqual(fake.events.last, "start listen", "the next unplugging listens again")
+        XCTAssertEqual(fake.events.last, "start listen", "unplugging resets to 🟠 listening")
     }
 
-    func testTheMenuSwitchDoesNothingOnAC() {
+    func testOnACTheMenuCanRecordOrStop() {
         let fake = Fake(onAC: true)
         let c = make(fake)
         c.start(); spin()
-        c.setBatteryChoice(.off); spin()
-        XCTAssertEqual(fake.events, ["start full"])
-        XCTAssertEqual(c.batteryChoice, .listen)
+        c.setChoice(.listen); spin()
+        XCTAssertEqual(fake.events, ["start full", "stop", "start listen"])
+        c.setChoice(.off); spin()
+        XCTAssertEqual(fake.events.last, "stop")
+        XCTAssertFalse(fake.running)
+        XCTAssertEqual(c.state, .stopped)
+    }
+
+    func testOnBatteryTheMenuCanTranscribe() {
+        let fake = Fake(onAC: false)
+        let c = make(fake)
+        c.start(); spin()
+        c.setChoice(.transcribe); spin()
+        XCTAssertEqual(fake.events, ["start listen", "stop", "start full"])
     }
 
     func testRestartOnBatteryComesBackListening() {
@@ -118,14 +138,14 @@ final class TranscriptionRestartTests: XCTestCase {
                                    start: { started.append($0); done.fulfill() },
                                    delay: 0.01)
         wait(for: [done], timeout: 2)
-        XCTAssertEqual(started, [.sentinel], "never a full whisper on battery")
+        XCTAssertEqual(started, [.sentinel], "never a full whisper on battery unless picked")
     }
 
-    func testRestartWithBatteryRecordingOffOnlyStops() {
-        let fake = Fake(onAC: false)
+    func testRestartWhenStoppedOnlyStops() {
+        let fake = Fake(onAC: true)
         let c = make(fake)
         c.start(); spin()
-        c.setBatteryChoice(.off); spin()
+        c.setChoice(.off); spin()
         fake.running = true  // something started it behind our back
         var started = false
         var stopped = false
@@ -140,11 +160,7 @@ final class TranscriptionRestartTests: XCTestCase {
 /// disk; since 2026-11-25 listening is where every unplugging starts. Whisper
 /// records once voice is heard, without a restart.
 final class BatterySentinelTests: XCTestCase {
-    private final class Fake {
-        var onAC = false
-        var running = false
-        var events: [String] = []
-    }
+    private typealias Fake = TranscriptionRestartTests.Fake
 
     private let store = UserDefaults(suiteName: "BatterySentinelTests")!
 
@@ -170,84 +186,71 @@ final class BatterySentinelTests: XCTestCase {
     }
 
     func testOnBatteryItStartsListening() {
-        let fake = Fake()
+        let fake = Fake(onAC: false)
         let c = make(fake)
         c.start(); spin()
         XCTAssertEqual(fake.events, ["start listen"])
-        XCTAssertEqual(c.state, .listeningOnBattery)
+        XCTAssertEqual(c.state, .listening)
     }
 
     func testVoiceHeardRecordsAgainWithoutARestart() {
-        let fake = Fake()
+        let fake = Fake(onAC: false)
         let c = make(fake)
         var woke: [String] = []
         var states: [TranscriptionController.State] = []
         c.onSentinelWake = { woke.append($0) }
         c.onStateChanged = { states.append($0) }
         c.start(); spin()
-        c.setBatteryChoice(.listen); spin()
         fake.events.removeAll()
         c.sentinelWoke("voice:Victor"); spin()
         XCTAssertEqual(fake.events, [], "a restart would throw away the 10 minutes in memory")
         XCTAssertEqual(c.runningMode, .captureOnly)
-        XCTAssertEqual(c.state, .recordingOnBattery)
+        XCTAssertEqual(c.state, .recording)
         XCTAssertEqual(woke, ["voice:Victor"])
-        XCTAssertEqual(states.last, .recordingOnBattery)
+        XCTAssertEqual(states.last, .recording)
     }
 
     func testAWakeIsIgnoredUnlessListening() {
-        let fake = Fake()
+        let fake = Fake(onAC: false)
         let c = make(fake)
         var woke = 0
         c.onSentinelWake = { _ in woke += 1 }
         c.start(); spin()
-        c.setBatteryChoice(.off); spin()
+        c.setChoice(.off); spin()
         c.sentinelWoke("voice:Victor"); spin()
-        XCTAssertEqual(c.state, .pausedOnBattery, "the menu's off is not overruled by a late line")
+        XCTAssertEqual(c.state, .stopped, "the menu's 🟥 is not overruled by a late line")
         XCTAssertEqual(woke, 0)
     }
 
-    func testRecordNowFromTheMenuWakesTheListenerInPlace() {
-        let fake = Fake()
+    func testRecordFromTheListenerWakesItInPlace() {
+        let fake = Fake(onAC: false)
         let c = make(fake)
         var asked = 0
         c.wakeSentinel = { asked += 1; return true }
         c.start(); spin()
-        c.setBatteryChoice(.listen); spin()
         fake.events.removeAll()
-        c.setBatteryChoice(.record); spin()
+        c.setChoice(.record); spin()
         XCTAssertEqual(asked, 1)
         XCTAssertEqual(fake.events, [], "SIGUSR1, not a restart")
-        XCTAssertEqual(c.state, .recordingOnBattery)
+        XCTAssertEqual(c.state, .recording)
     }
 
-    func testListeningSurvivesARestartAndTheChargerForgetsIt() {
-        let fake = Fake()
+    func testPickingOrangeWhileRecordingKeepsRecording() {
+        let fake = Fake(onAC: false)
+        let c = make(fake)
+        c.start(); spin()
+        c.sentinelWoke("voice:Victor"); spin()
+        fake.events.removeAll()
+        c.setChoice(.listen); spin()
+        XCTAssertEqual(c.state, .recording)
+        XCTAssertEqual(fake.events, [])
+    }
+
+    func testARecordingSurvivesARestart() {
+        let fake = Fake(onAC: false)
         let first = make(fake)
-        first.setBatteryChoice(.listen); spin()
-        XCTAssertEqual(make(fake).batteryChoice, .listen)
-        fake.onAC = true
-        XCTAssertEqual(make(fake).batteryChoice, .listen)
-    }
-
-    func testAnExplicitRecordSurvivesARestart() {
-        let fake = Fake()
-        let first = make(fake)
-        first.setBatteryChoice(.record); spin()
-        XCTAssertEqual(make(fake).batteryChoice, .record)
-    }
-
-    func testTheOldStoppedFlagReadsAsOff() {
-        store.set(true, forKey: "TranscriptionController.batteryRecordingStopped")
-        XCTAssertEqual(make(Fake()).batteryChoice, .off)
-    }
-
-    func testTheMenuOffersOffOnlyThere() {
-        typealias M = MenuBarManager.BatteryRecordingMenu
-        XCTAssertEqual(M.rows(.onAC).map(\.choice), [])
-        XCTAssertEqual(M.rows(.recordingOnBattery).map(\.choice), [.off])
-        XCTAssertEqual(M.rows(.listeningOnBattery).map(\.choice), [.record, .off])
-        XCTAssertEqual(M.rows(.pausedOnBattery).map(\.choice), [.listen])
+        first.setChoice(.record); spin()
+        XCTAssertEqual(make(fake).choice, .record)
     }
 }
 
@@ -271,31 +274,19 @@ final class MicOverlayTests: XCTestCase {
                        "the dark half of the blink keeps the column")
     }
 
-    /// The 🎙️ menu's top row says the mark in words, and only off AC (2026-11-25).
-    func testTheMenuSaysWhatTheMarkMeans() {
-        typealias M = MenuBarManager.BatteryRecordingMenu
-        XCTAssertNil(M.status(.onAC))
-        XCTAssertTrue(M.status(.recordingOnBattery)!.hasPrefix("🟠"))
-        XCTAssertTrue(M.status(.listeningOnBattery)!.hasPrefix("🟥"))
-        XCTAssertTrue(M.status(.pausedOnBattery)!.hasPrefix("🟥"))
-        XCTAssertTrue(M.status(.recordingOnBattery)!.contains("Recording: ON"))
-        XCTAssertTrue(M.status(.listeningOnBattery)!.contains("Recording: OFF"),
-                      "listening keeps the ring in memory: not recording")
+    /// Three rows, each wearing the mark the bar shows in its state, the one in force
+    /// ticked; 🟠 covers listening as well as recording (2026-11-25).
+    func testTheMenuRowsAndTheirTicks() {
+        typealias M = MenuBarManager.TranscriptionMenu
+        XCTAssertEqual(M.rows.map(\.title), ["🟢 Transcribing", "🟠 Recording audio", "🟥 Stopped"])
+        XCTAssertEqual(M.ticked(.transcribing), .transcribe)
+        XCTAssertEqual(M.ticked(.listening), .listen)
+        XCTAssertEqual(M.ticked(.recording), .listen)
+        XCTAssertEqual(M.ticked(.stopped), .off)
+        XCTAssertEqual(M.tooltip(.recording), "Recording for later transcribing")
     }
 
-    /// Every 🔋 row wears the mark of the state it leads to, never ⏺ ⏹ 👂 (2026-11-25).
-    func testTheRowsWearTheMarkTheyLeadTo() {
-        typealias M = MenuBarManager.BatteryRecordingMenu
-        typealias C = TranscriptionController
-        for state in [C.State.recordingOnBattery, .listeningOnBattery, .pausedOnBattery] {
-            for row in M.rows(state) {
-                let next = C.state(onAC: false, choice: row.choice)
-                XCTAssertEqual(row.title.first, M.status(next)!.first, row.title)
-            }
-        }
-    }
-
-    /// 🟠 steady while recording on battery, 🟥 blinking while paused (2026-11-25).
+    /// 🟠 steady while recording or listening, 🟥 blinking while stopped (2026-11-25).
     func testTheMarksAreTheTwoEmoji() {
         XCTAssertEqual(MicOverlay.emoji(.recording), "🟠")
         XCTAssertEqual(MicOverlay.emoji(.pause(lit: true)), "🟥")

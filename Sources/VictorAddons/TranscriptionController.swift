@@ -2,58 +2,54 @@ import Foundation
 
 /// Dead-simple transcription lifecycle.
 ///
-/// The rule is: **on AC, Whisper transcribes; on battery, it only records**
-/// (since 2026-11-03 — before that it stopped outright, and an important meeting
-/// taken on battery left no trace at all). In `.captureOnly` the microphones stay
-/// open and each channel goes to `battery-audio/` without the 1.8 GB model ever
-/// being loaded; the full process that starts on AC transcribes that audio and
-/// slots it into the day's transcript at the minute it was spoken
-/// (`whisper-transcribe/battery_audio.py`).
+/// **Three choices, picked in the 🎙️ menu on any power source** (2026-11-25, Victor:
+/// *"pune de fapt 3 opțiuni: 🟢 Transcribing; 🟠 Recording audio; 🟥 stopped … orice
+/// setez, la AC se resetează pe verde"*):
+/// - 🟢 `transcribe` — Whisper transcribes live. What plugging in the charger resets to.
+/// - 🟠 `listen` / `record` — the microphones without the 1.8 GB model; the audio is
+///   transcribed later by the next full process (`whisper-transcribe/battery_audio.py`).
+///   `listen` keeps the last 10 min in memory and, on 30 s of voice in 2 min or a call
+///   starting, writes them out and records by itself (`SENTINEL_WAKE`, `sentinelWoke()`)
+///   — the menu's 🟠 row, and what unplugging resets to. `record` is what it becomes
+///   once woken.
+/// - 🟥 `off` — nothing at all: for the plane whose noise would keep waking the listener.
 ///
-/// On battery there are three choices (`BatteryChoice`), all reset by the
-/// charger (to `batteryDefault`) and all surviving a restart of this app:
-/// - `listen` — **the default since 2026-11-25** (it was the on-battery pill's
-///   `Stop ❌` from 2026-11-24). Nothing reaches the disk, but whisper keeps
-///   listening, holds the last 10 min in memory and, on 30 s of voice in 2 min
-///   or a call starting, writes them out and records by itself
-///   (`SENTINEL_WAKE`, `sentinelWoke()`). Victor: *"înregistrezi dacă simți că
-///   e voce în jur"* — and no pill about it (`BatteryRecordingNotice` is gone).
-/// - `record` — the microphones go to disk from the first second (menu's
-///   `Record now`, or a wake).
-/// - `off` — only from the menu: nothing at all, for the case where the noise
-///   around fools the listener (a plane).
+/// The choice survives a restart of this app, unless the power source changed meanwhile.
+/// Before 2026-11-25 the choice existed only on battery, and AC always transcribed.
 ///
-/// A 60s heartbeat restarts Whisper, in whichever mode the power source asks
-/// for, if it died (crash, OOM, the capture-stall watchdog's exit).
+/// A 60s heartbeat restarts Whisper, in whichever mode the choice asks for, if it died
+/// (crash, OOM, the capture-stall watchdog's exit).
 ///
 /// There is deliberately no rule here based on the transcript going quiet —
 /// silence cannot tell a dead microphone from an empty room, and it used to
 /// restart Whisper every 10 minutes all night.
 final class TranscriptionController {
     enum Mode: Equatable {
-        /// On AC: live transcription (and the battery backlog, if any).
+        /// 🟢 Live transcription (and the recorded backlog, if any).
         case full
-        /// On battery: record only, no model.
+        /// 🟠 Record only, no model.
         case captureOnly
-        /// On battery after `Stop ❌`: listen only, no model, no disk — until
-        /// voice is heard, when the same process turns into `captureOnly`.
+        /// 🟠 Listen only, no model, no disk — until voice is heard, when the same
+        /// process turns into `captureOnly`.
         case sentinel
     }
 
-    enum BatteryChoice: String {
-        case record, listen, off
+    enum Choice: String {
+        case transcribe, listen, record, off
     }
 
-    /// What every unplugging starts with.
-    static let batteryDefault: BatteryChoice = .listen
+    /// What plugging in / unplugging resets the choice to.
+    static func defaultChoice(onAC: Bool) -> Choice { onAC ? .transcribe : .listen }
 
     enum State: Equatable {
-        case onAC
-        case recordingOnBattery
-        /// On battery after `Stop ❌`: listening for voice to record again.
-        case listeningOnBattery
-        /// On battery with everything switched off from the menu.
-        case pausedOnBattery
+        /// 🟢
+        case transcribing
+        /// 🟠 recording to disk.
+        case recording
+        /// 🟠 listening for voice to record (the last 10 min in memory).
+        case listening
+        /// 🟥
+        case stopped
     }
 
     /// Start Whisper in `Mode`. Always invoked on the main queue.
@@ -76,20 +72,23 @@ final class TranscriptionController {
     private let isWhisperRunning: () -> Bool
     private let switchDelay: TimeInterval
     private let store: UserDefaults
-    /// The bool of 2026-11-06 (`true` = stopped); read once, as `off`, then gone.
-    private static let legacyStoppedKey = "TranscriptionController.batteryRecordingStopped"
-    private static let choiceKey = "TranscriptionController.batteryChoice"
+    /// The keys before 2026-11-25, when the choice was battery-only; read once, then gone.
+    private static let legacyKeys = ["TranscriptionController.batteryRecordingStopped",
+                                     "TranscriptionController.batteryChoice"]
+    private static let choiceKey = "TranscriptionController.choice"
+    /// The power source the saved choice was made on: `ac` / `battery`.
+    private static let choicePowerKey = "TranscriptionController.choicePower"
     private var heartbeat: DispatchSourceTimer?
     private let queue = DispatchQueue(
         label: "ro.victorrentea.macos-addons.transcription-controller", qos: .utility)
 
     /// Main-queue state.
     private(set) var runningMode: Mode?
-    /// What to do on battery. Reset by the charger.
-    private(set) var batteryChoice: BatteryChoice {
+    /// What should run. Reset by every change of power source.
+    private(set) var choice: Choice {
         didSet {
-            if batteryChoice == Self.batteryDefault { store.removeObject(forKey: Self.choiceKey) }
-            else { store.set(batteryChoice.rawValue, forKey: Self.choiceKey) }
+            store.set(choice.rawValue, forKey: Self.choiceKey)
+            store.set(isOnAC() ? "ac" : "battery", forKey: Self.choicePowerKey)
         }
     }
     private var lastReportedState: State?
@@ -102,39 +101,44 @@ final class TranscriptionController {
         self.isWhisperRunning = isWhisperRunning
         self.switchDelay = switchDelay
         self.store = store
-        var saved = store.string(forKey: Self.choiceKey).flatMap(BatteryChoice.init(rawValue:))
-        if store.bool(forKey: Self.legacyStoppedKey) { saved = saved ?? .off }
-        store.removeObject(forKey: Self.legacyStoppedKey)
-        batteryChoice = isOnAC() ? Self.batteryDefault : (saved ?? Self.batteryDefault)
-        // `didSet` does not run in init: starting on AC must forget it here.
-        if isOnAC() { store.removeObject(forKey: Self.choiceKey) }
+        let onAC = isOnAC()
+        var saved: Choice?
+        if store.string(forKey: Self.choicePowerKey) == (onAC ? "ac" : "battery") {
+            saved = store.string(forKey: Self.choiceKey).flatMap(Choice.init(rawValue:))
+        } else if !onAC {
+            // The old battery-only keys: a stop or a choice made on battery.
+            if store.bool(forKey: Self.legacyKeys[0]) { saved = .off }
+            saved = store.string(forKey: Self.legacyKeys[1]).flatMap(Choice.init(rawValue:)) ?? saved
+        }
+        Self.legacyKeys.forEach(store.removeObject(forKey:))
+        // `didSet` does not run in init.
+        choice = saved ?? Self.defaultChoice(onAC: onAC)
     }
 
-    /// What should be running right now, if anything.
-    static func desiredMode(onAC: Bool, choice: BatteryChoice) -> Mode? {
-        if onAC { return .full }
+    /// What should be running for a choice, if anything.
+    static func desiredMode(_ choice: Choice) -> Mode? {
         switch choice {
+        case .transcribe: return .full
         case .record: return .captureOnly
         case .listen: return .sentinel
         case .off: return nil
         }
     }
 
-    static func state(onAC: Bool, choice: BatteryChoice) -> State {
-        if onAC { return .onAC }
+    static func state(_ choice: Choice) -> State {
         switch choice {
-        case .record: return .recordingOnBattery
-        case .listen: return .listeningOnBattery
-        case .off: return .pausedOnBattery
+        case .transcribe: return .transcribing
+        case .record: return .recording
+        case .listen: return .listening
+        case .off: return .stopped
         }
     }
 
-    var desiredMode: Mode? { Self.desiredMode(onAC: isOnAC(), choice: batteryChoice) }
+    var desiredMode: Mode? { Self.desiredMode(choice) }
 
-    var state: State { Self.state(onAC: isOnAC(), choice: batteryChoice) }
+    var state: State { Self.state(choice) }
 
-    /// Call once on launch: applies the current power state and arms the
-    /// heartbeat.
+    /// Call once on launch: applies the current choice and arms the heartbeat.
     func start() {
         DispatchQueue.main.async { [weak self] in self?.apply() }
         let t = DispatchSource.makeTimerSource(queue: queue)
@@ -146,49 +150,51 @@ final class TranscriptionController {
         heartbeat = t
     }
 
-    /// Call from PowerMonitor's AC/battery callbacks.
+    /// Call from PowerMonitor's AC/battery callbacks: plugging in resets to 🟢,
+    /// unplugging to 🟠 listening.
     func powerDidChange() {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            // Plugging in resets the battery choice: the next unplugging listens.
-            if self.isOnAC() { self.batteryChoice = Self.batteryDefault }
+            self.choice = Self.defaultChoice(onAC: self.isOnAC())
             self.apply()
         }
     }
 
-    /// The menu's rows. Only meaningful on
-    /// battery; on AC it is a no-op, since the charger resets it anyway.
-    func setBatteryChoice(_ choice: BatteryChoice) {
+    /// The menu's rows, on any power source.
+    func setChoice(_ choice: Choice) {
         DispatchQueue.main.async { [weak self] in
-            guard let self, !self.isOnAC() else { return }
-            if choice == .record, self.batteryChoice == .listen, self.runningMode == .sentinel,
+            guard let self else { return }
+            // 🟠 picked while already recording: it is recording, which is more than
+            // listening — going back to listening would only drop the disk.
+            if choice == .listen, self.choice == .record { return }
+            if choice == .record, self.choice == .listen, self.runningMode == .sentinel,
                self.isWhisperRunning(), self.wakeSentinel?() == true {
                 // Its SENTINEL_WAKE:menu arrives next and is ignored, the
                 // choice being `record` already.
-                self.batteryChoice = .record
+                self.choice = .record
                 self.runningMode = .captureOnly
                 self.apply()
                 return
             }
-            self.batteryChoice = choice
+            self.choice = choice
             self.apply()
         }
     }
 
     /// 👂 Whisper's `SENTINEL_WAKE:<why>`: the listening process has already
     /// written its ring out and is recording — so the state moves to
-    /// `recordingOnBattery` **without** a restart (a restart would lose the
+    /// `recording` **without** a restart (a restart would lose the
     /// ring). Ignored unless we are listening. Main queue.
     func sentinelWoke(_ why: String) {
-        guard !isOnAC(), batteryChoice == .listen else { return }
-        batteryChoice = .record
+        guard choice == .listen else { return }
+        choice = .record
         if runningMode == .sentinel { runningMode = .captureOnly }
         onSentinelWake?(why)
         apply()
     }
 
     /// Re-launch Whisper so it picks up changed launch settings — in the mode
-    /// the power rule asks for, or not at all.
+    /// the choice asks for, or not at all.
     ///
     /// Callers used to do this themselves, with a bare `stop()` then `start()`.
     /// On battery that started a *full* Whisper that nothing ever stopped again,
@@ -208,7 +214,7 @@ final class TranscriptionController {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { start(mode) }
     }
 
-    /// Sync Whisper to the current power source and menu switch. Main queue.
+    /// Sync Whisper to the current choice. Main queue.
     private func apply() {
         let s = state
         if s != lastReportedState {
