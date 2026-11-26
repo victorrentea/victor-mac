@@ -5,7 +5,7 @@ import XCTest
 final class VideoPromptTests: XCTestCase {
     private let json = """
     {"id":"aNa3Co83_gk","title":"Spartans","startSeconds":0,"file":"aNa3Co83_gk.mp4","url":null,
-     "prompt":{"atSeconds":3.95,"question":"Spartans! What is your profession?","defaultAnswer":"Builders",
+     "prompt":{"atSeconds":3.95,"defaultAnswer":"Builders",
                "cues":[[4.1,5.05],[5.15,6.15],[6.2,8.0]],"uppercase":true,"suffix":"!"}}
     """
 

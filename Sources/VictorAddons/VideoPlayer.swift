@@ -34,8 +34,8 @@ import Foundation
 ///    every ScreenBrush stroke under the picture.
 ///
 /// 7. **✍️ A mid-clip prompt (2026-11-26)**, when the manifest entry has a
-///    `prompt`: at its second the clip freezes and a box asks the question with
-///    the default answer selected; ⏎ rolls on and the answer is drawn, gold and
+///    `prompt`: at its second the clip freezes and a box in the middle holds just
+///    the default answer, selected (no question label — the clip just asked it); ⏎ rolls on and the answer is drawn, gold and
 ///    bold, during each of the prompt's cues — always, whatever ✓ Subtitles says,
 ///    because it is the punchline (Spartans: «HA-OOH!» reads BUILDERS!, or
 ///    TESTERS! if that is what he typed).
@@ -458,7 +458,6 @@ final class VideoWindow: NSWindow, NSTextFieldDelegate {
     var promptAnswer: String { prompt?.caption(for: promptWord ?? "") ?? "" }
     var onPromptAnswered: (() -> Void)?
     private let promptBox = NSView()
-    private let promptQuestion = NSTextField(labelWithString: "")
     private let promptField = NSTextField(string: "")
     private let answerLabel = NSTextField(labelWithString: "")
     private let answerOutline = NSTextField(labelWithString: "")
@@ -645,10 +644,6 @@ final class VideoWindow: NSWindow, NSTextFieldDelegate {
         promptBox.layer?.borderWidth = 3
         promptBox.isHidden = true
 
-        promptQuestion.font = .systemFont(ofSize: size, weight: .semibold)
-        promptQuestion.textColor = .white
-        promptQuestion.alignment = .center
-
         promptField.font = .systemFont(ofSize: size * 1.3, weight: .bold)
         promptField.textColor = Self.gold
         promptField.alignment = .center
@@ -658,26 +653,23 @@ final class VideoWindow: NSWindow, NSTextFieldDelegate {
         promptField.backgroundColor = NSColor.white.withAlphaComponent(0.12)
         promptField.delegate = self
 
-        promptBox.addSubview(promptQuestion)
         promptBox.addSubview(promptField)
         view.addSubview(promptBox)
     }
 
     /// Frozen frame: the box in the middle of the picture, the current answer
-    /// in the field, all of it selected so typing replaces it.
+    /// in the field, all of it selected so typing replaces it. No question
+    /// label: Leonidas has just asked it (Victor: "useless label", 2026-11-26).
     func showPrompt() {
         guard let prompt, let view = contentView else { return }
-        promptQuestion.stringValue = prompt.question
         promptField.stringValue = promptWord ?? prompt.defaultAnswer
         let video = playerLayer.videoRect.isEmpty ? view.bounds : playerLayer.videoRect
         let w = min(video.width * 0.6, max(500, view.bounds.width * 0.45))
-        let qh = promptQuestion.intrinsicContentSize.height
         let fh = promptField.intrinsicContentSize.height + 12
-        let pad = qh * 0.6
-        let h = pad * 3 + qh + fh
+        let pad = fh * 0.35
+        let h = fh + 2 * pad
         promptBox.frame = NSRect(x: video.midX - w / 2, y: video.midY - h / 2, width: w, height: h)
-        promptQuestion.frame = NSRect(x: pad, y: h - pad - qh, width: w - 2 * pad, height: qh)
-        promptField.frame = NSRect(x: pad * 2, y: pad, width: w - 4 * pad, height: fh)
+        promptField.frame = NSRect(x: pad, y: pad, width: w - 2 * pad, height: fh)
         promptBox.isHidden = false
         answerLabel.isHidden = true
         answerOutline.isHidden = true

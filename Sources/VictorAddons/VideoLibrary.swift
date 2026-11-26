@@ -35,7 +35,6 @@ enum VideoLibrary {
     /// clock), uppercased when `uppercase`, with `suffix` after it ("!").
     struct Prompt: Codable, Equatable {
         let atSeconds: Double
-        let question: String
         let defaultAnswer: String
         let cues: [[Double]]
         var uppercase: Bool? = nil
