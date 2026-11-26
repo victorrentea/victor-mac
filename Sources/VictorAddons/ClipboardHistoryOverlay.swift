@@ -85,8 +85,7 @@ final class ClipboardHistoryOverlay {
     ///
     /// It sits one level under the bezel and, like it, never takes focus and
     /// never takes a click — `ignoresMouseEvents`, so a scrim that somehow
-    /// outlived its gesture could not trap the Mac (`ScreenBlackout` earns its
-    /// click-through the same way).
+    /// outlived its gesture could not trap the Mac.
     private final class ScrimPanel: NSPanel {
         static let opacity: CGFloat = 0.2
 

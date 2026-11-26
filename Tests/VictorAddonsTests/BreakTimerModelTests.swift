@@ -205,8 +205,8 @@ final class BreakTimerModelTests: XCTestCase {
     // MARK: - /test/break/state carries the ☕ menu-bar countdown
 
     func testStateJsonGetsUntilBreakSpliced() {
-        XCTAssertEqual(BreakTimerModel.withUntilBreak("{\"showing\":false,\"blackout\":false}", running: true),
-                       "{\"showing\":false,\"blackout\":false,\"untilBreak\":true}")
+        XCTAssertEqual(BreakTimerModel.withUntilBreak("{\"showing\":false}", running: true),
+                       "{\"showing\":false,\"untilBreak\":true}")
         XCTAssertEqual(BreakTimerModel.withUntilBreak("{\"showing\":true}", running: false),
                        "{\"showing\":true,\"untilBreak\":false}")
     }

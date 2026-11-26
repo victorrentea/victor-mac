@@ -101,7 +101,7 @@ final class StatusBanner {
     private func checkPresence() {
         let pos = NSEvent.mouseLocation
         defer { lastMousePosition = pos }
-        let inputAge = ScreenBlackout.secondsSinceLastInput()
+        let inputAge = UserInputAge.seconds()
         let sawInput = inputAge < (CACurrentMediaTime() - presenceWaitStartedAt)
         let mouseMoved = lastMousePosition.map { $0 != pos } ?? false
         if sawInput || mouseMoved {

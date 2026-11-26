@@ -1357,7 +1357,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         // /test/break/leak-scroll-capture — the guard that keeps a lost mouseUp from
         // killing every scroll on the Mac. Already on main (the route switch runs in
         // `DispatchQueue.main.sync`). The ⏱️ stopwatch is the same view, and the one
-        // to test on: closing it leaves no `ScreenBlackout` behind.
+        // to test on.
         tabletServer?.onTestBreakLeakScrollCapture = { [weak self] stuck, maxSeconds in
             guard let self else { return "{\"armed\":false}" }
             return self.stopwatch.leakScrollCaptureForTest(buttonStuck: stuck, maxSeconds: maxSeconds)

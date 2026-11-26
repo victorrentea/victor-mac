@@ -52,7 +52,7 @@ final class BreakTimerController {
     /// `.countdown` is the ☕️ Break watch. `.stopwatch` is the ⏱️ Timer from the
     /// same submenu: the same panel, digits, ⏸/✕, drag, corner-resize and
     /// wheel-zoom, but counting UP from zero — and with none of a break's
-    /// consequences: no gong, no fullscreen break screen, no post-close blackout,
+    /// consequences: no gong, no fullscreen break screen,
     /// no "Resumed" clock, no country pick. A separate instance, so a stopwatch
     /// and a break can be on screen at the same time.
     enum Mode { case countdown, stopwatch }
@@ -83,13 +83,6 @@ final class BreakTimerController {
     private var bgView: NSView?              // opaque backdrop, faded in/out
     private var bgOpaque = true              // current backdrop state
     private var epoch = 0                      // invalidates in-flight expiry blocks
-    /// Set when the countdown hits zero: the close that follows the gong must
-    /// NOT black the displays out (since 2026-11-03 — Victor: *"când timerul
-    /// expiră să nu mai înnegrească ecranul"*; before, it did unless he had
-    /// touched the Mac in the last 10 s). Only a ✕ / programmatic close still
-    /// blacks out. Cleared by every close and every (re)start, so it can never
-    /// leak into a later ✕.
-    private var skipBlackoutOnClose = false
 
     // Title + size for the NEXT fresh window. The menu opens a full-size "BREAK";
     // clicking a floating ☕ opens a half-size "UNTIL BREAK". Both persist so a
@@ -246,8 +239,6 @@ final class BreakTimerController {
             isLunch = false
         }
         epoch += 1
-        skipBlackoutOnClose = false
-        ScreenBlackout.shared.dismiss()        // a new break wins over a previous close's blackout
         blinkTimer?.invalidate(); blinkTimer = nil
         remaining = max(0, minutes) * 60
         paused = false
@@ -309,7 +300,6 @@ final class BreakTimerController {
     func addSeconds(_ s: Int) {
         guard panel != nil else { return }
         epoch += 1                            // cancel any pending expiry sequence
-        skipBlackoutOnClose = false           // …and the verdict that expiry reached
         blinkTimer?.invalidate(); blinkTimer = nil
         remaining = max(0, remaining + s)
         view?.setDigitsVisible(true)
@@ -439,9 +429,7 @@ final class BreakTimerController {
     /// paused" can be asserted from a script instead of read off the projector,
     /// which during a workshop is the wall in front of the room.
     func stateJSON() -> String {
-        // `blackout`: whether the post-close black covers are up — so "an
-        // expired break leaves the screen alone" can be asserted too.
-        guard panel != nil else { return "{\"showing\":false,\"blackout\":\(ScreenBlackout.shared.isShowing)}" }
+        guard panel != nil else { return "{\"showing\":false}" }
         if isStopwatch {
             return "{\"showing\":true,\"paused\":\(paused),\"elapsed\":\(remaining)," +
                    "\"digits\":\"\(BreakTimerModel.formatElapsed(remaining))\"," +
@@ -469,7 +457,6 @@ final class BreakTimerController {
     func close() {
         epoch += 1                                       // cancels pending gong/expiry blocks
         let wasShowing = panel != nil
-        let wasFullscreen = isEnlarged
         // A real break was showing → (re)start the "resumed" clock. An "UNTIL BREAK"
         // countdown is excluded: it measures the time TO the pause, so its close
         // must leave "Resumed Xm ago" anchored on the last actual break.
@@ -499,19 +486,6 @@ final class BreakTimerController {
         // the timer never leaves a hand/resize cursor stuck on screen.
         NSCursor.arrow.set()
         clearPersisted()
-        // The break is over but Victor may still be out of the room: keep every
-        // display black until he's actually back (any mouse move / keystroke),
-        // instead of exposing the desktop on the projector. Applies to EVERY
-        // close — ✕, expiry after the gong, or programmatic — and only when a
-        // timer was really on screen. When the panel was the fullscreen break
-        // screen the screen is already black, so skip the fade-in (no flash of
-        // desktop between the two blacks). The exception, since 2026-11-03:
-        // an expiry (`skipBlackoutOnClose`) — the room is coming back, and the
-        // screen should already be showing it the slides.
-        if wasShowing && !skipBlackoutOnClose && !isStopwatch {
-            ScreenBlackout.shared.show(fadeIn: wasFullscreen ? 0 : 0.35)
-        }
-        skipBlackoutOnClose = false
     }
 
     // MARK: - Persistence (survive an app redeploy mid-break)
@@ -603,8 +577,6 @@ final class BreakTimerController {
 
     private func resume(remaining rem: Int, paused isPaused: Bool) {
         epoch += 1
-        skipBlackoutOnClose = false
-        ScreenBlackout.shared.dismiss()
         blinkTimer?.invalidate(); blinkTimer = nil
         remaining = rem
         paused = isPaused
@@ -818,7 +790,7 @@ final class BreakTimerController {
 
     /// Seconds since the last user input of any kind (mouse or keyboard).
     private static func systemIdleSeconds() -> CFTimeInterval {
-        ScreenBlackout.secondsSinceLastInput()
+        UserInputAge.seconds()
     }
 
     // MARK: - Internals
@@ -914,8 +886,6 @@ final class BreakTimerController {
     private func beginExpiry() {
         timer?.invalidate(); timer = nil
         clearPersisted()
-        // An expired break never blacks the screens out (see the flag's doc).
-        skipBlackoutOnClose = true
         // If the timer was dragged onto another display (e.g. the external monitor
         // during a course), bring it home to the retina before the gong + blink —
         // the retina is what's projected to the room, so "break's over!" lands where
@@ -923,9 +893,6 @@ final class BreakTimerController {
         returnToRetinaIfNeeded()
         let myEpoch = epoch
         if !isStopwatch && titleText == BreakTimerModel.untilBreakTitle {
-            // The room just voted, so nobody left: no blackout after the gongs,
-            // which would also cover the ☕️ Break menu this opens.
-            skipBlackoutOnClose = true
             onUntilBreakExpired?()
         }
         // Play the FULL gong, then the second strike after the first finishes.
