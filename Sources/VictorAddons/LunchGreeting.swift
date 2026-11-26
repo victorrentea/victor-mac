@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-/// 🍽️ "Bon appétit", spoken in the language of the ☕️ break country, when a
+/// 🍽️ "Have a nice lunch", spoken in the language of the ☕️ break country, when a
 /// lunch break starts — and again whenever the country is changed while that
 /// lunch is running (2026-11-26, Victor: *"if I'm in Amsterdam … there should be
 /// an expression of Bon Appetit in that language … the moment I change the
@@ -32,29 +32,34 @@ enum LunchGreeting {
     /// English, for a country with no line below.
     static let fallback = Phrase(text: "Enjoy your lunch!", language: "en-GB")
 
-    /// What a local says to a room heading out to eat, by ISO-3166 alpha-2.
+    /// What a local says to a room heading out **to lunch**, by ISO-3166 alpha-2.
+    /// Lunch-specific wording wherever the language has one (*Bon déjeuner !*,
+    /// *Buon pranzo!*, *Schöne Mittagspause!*, *Trevlig lunch!*) rather than a
+    /// "bon appétit" that reads like a dinner table (Victor, 2026-11-26). The
+    /// any-meal phrase stays where it is what people say at noon too: *Poftă
+    /// bună!*, *Smacznego!*, *¡Buen provecho!* — and Dutch *Eet smakelijk!*,
+    /// which Victor checked and kept over *Fijne lunch!*.
     /// Pure, so it is unit-tested. Extend by adding a line.
     static func phrase(forISO iso: String) -> Phrase {
         switch iso.uppercased() {
         case "RO": return .init(text: "Poftă bună!", language: "ro-RO")
         case "NL": return .init(text: "Eet smakelijk!", language: "nl-NL")
         case "BE": return .init(text: "Smakelijk!", language: "nl-BE")
-        case "DE", "AT": return .init(text: "Guten Appetit!", language: "de-DE")
-        case "CH": return .init(text: "En Guete!", language: "de-DE")
-        case "FR": return .init(text: "Bon appétit !", language: "fr-FR")
-        case "IT": return .init(text: "Buon appetito!", language: "it-IT")
+        case "DE", "AT", "CH": return .init(text: "Schöne Mittagspause!", language: "de-DE")
+        case "FR": return .init(text: "Bon déjeuner !", language: "fr-FR")
+        case "IT": return .init(text: "Buon pranzo!", language: "it-IT")
         case "ES": return .init(text: "¡Buen provecho!", language: "es-ES")
         case "MX", "AR", "CL", "CO", "PE": return .init(text: "¡Buen provecho!", language: "es-MX")
-        case "PT": return .init(text: "Bom apetite!", language: "pt-PT")
-        case "BR": return .init(text: "Bom apetite!", language: "pt-BR")
+        case "PT": return .init(text: "Bom almoço!", language: "pt-PT")
+        case "BR": return .init(text: "Bom almoço!", language: "pt-BR")
         case "PL": return .init(text: "Smacznego!", language: "pl-PL")
         case "CZ": return .init(text: "Dobrou chuť!", language: "cs-CZ")
         case "HU": return .init(text: "Jó étvágyat!", language: "hu-HU")
         case "GR", "CY": return .init(text: "Καλή όρεξη!", language: "el-GR")
-        case "DK": return .init(text: "Velbekomme!", language: "da-DK")
-        case "NO": return .init(text: "God appetitt!", language: "nb-NO")
-        case "SE": return .init(text: "Smaklig måltid!", language: "sv-SE")
-        case "FI": return .init(text: "Hyvää ruokahalua!", language: "fi-FI")
+        case "DK": return .init(text: "God frokost!", language: "da-DK")
+        case "NO": return .init(text: "God lunsj!", language: "nb-NO")
+        case "SE": return .init(text: "Trevlig lunch!", language: "sv-SE")
+        case "FI": return .init(text: "Hyvää lounasta!", language: "fi-FI")
         case "IL": return .init(text: "בתיאבון!", language: "he-IL")
         case "BG": return .init(text: "Добър апетит!", language: "bg-BG")
         case "HR": return .init(text: "Dobar tek!", language: "hr-HR")
@@ -62,15 +67,15 @@ enum LunchGreeting {
         case "RU": return .init(text: "Приятного аппетита!", language: "ru-RU")
         case "UA": return .init(text: "Смачного!", language: "uk-UA")
         case "TR": return .init(text: "Afiyet olsun!", language: "tr-TR")
-        case "JP": return .init(text: "どうぞ、召し上がれ！", language: "ja-JP")
-        case "KR": return .init(text: "맛있게 드세요!", language: "ko-KR")
-        case "CN", "SG", "TW": return .init(text: "请慢用！", language: "zh-CN")
+        case "JP": return .init(text: "お昼休み、ごゆっくりどうぞ！", language: "ja-JP")
+        case "KR": return .init(text: "점심 맛있게 드세요!", language: "ko-KR")
+        case "CN", "SG": return .init(text: "祝大家午餐愉快！", language: "zh-CN")
+        case "TW": return .init(text: "祝大家午餐愉快！", language: "zh-TW")
         case "HK": return .init(text: "慢慢食！", language: "yue-HK")
-        case "TH": return .init(text: "ทานให้อร่อยนะ", language: "th-TH")
+        case "TH": return .init(text: "ทานข้าวเที่ยงให้อร่อยนะ", language: "th-TH")
         case "VN": return .init(text: "Chúc ngon miệng!", language: "vi-VN")
-        case "ID": return .init(text: "Selamat makan!", language: "id-ID")
-        case "MY": return .init(text: "Selamat menjamu selera!", language: "ms-MY")
-        case "IS": return .init(text: "Verði ykkur að góðu!", language: "is-IS")
+        case "ID": return .init(text: "Selamat makan siang!", language: "id-ID")
+        case "MY": return .init(text: "Selamat makan tengah hari!", language: "ms-MY")
         case "IN": return .init(text: "Enjoy your lunch!", language: "en-IN")
         case "IE": return .init(text: "Enjoy your lunch!", language: "en-IE")
         case "US", "CA": return .init(text: "Enjoy your lunch!", language: "en-US")
@@ -83,7 +88,31 @@ enum LunchGreeting {
     // MARK: - Speaking
 
     /// Held so the utterance is not cut off by ARC; main thread only.
-    private static let synthesizer = AVSpeechSynthesizer()
+    private static let synthesizer: AVSpeechSynthesizer = {
+        let s = AVSpeechSynthesizer()
+        s.delegate = tracker
+        return s
+    }()
+    private static let tracker = Tracker()
+
+    /// What was last said and whether the synthesizer got through it — the app's
+    /// log only reaches its own window, so `/test/break/state` reads this to tell
+    /// "the words were spoken" from "the code path ran". Main thread only.
+    private(set) static var last: (text: String, voice: String, iso: String)?
+    private(set) static var finishedCount = 0
+
+    private final class Tracker: NSObject, AVSpeechSynthesizerDelegate {
+        func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish u: AVSpeechUtterance) {
+            DispatchQueue.main.async { LunchGreeting.finishedCount += 1 }
+        }
+    }
+
+    /// `{"text":…,"voice":…,"iso":…,"finished":N}`, or `null` before the first greeting.
+    static func stateJSON() -> String {
+        guard let l = last else { return "null" }
+        func esc(_ x: String) -> String { x.replacingOccurrences(of: "\"", with: "\\\"") }
+        return "{\"text\":\"\(esc(l.text))\",\"voice\":\"\(esc(l.voice))\",\"iso\":\"\(l.iso)\",\"finished\":\(finishedCount)}"
+    }
 
     /// The best installed voice for `language`: exact locale before the bare
     /// language, Premium before Enhanced before the default. Skips the novelty
@@ -117,6 +146,7 @@ enum LunchGreeting {
             if comp > 0 { BluetoothOutput.playWakeTone(seconds: comp) }
             u.preUtteranceDelay = comp
             overlayInfo("🍽️ \(country.flag) \(p.text) [\(v?.name ?? "default voice")]")
+            last = (p.text, v?.name ?? "default", country.iso)
             synthesizer.speak(u)
         }
     }

@@ -451,7 +451,8 @@ final class BreakTimerController {
                                                  timeZone: selectedCountry.timeZone)
         return "{\"showing\":true,\"paused\":\(paused),\"remaining\":\(remaining)," +
                "\"digits\":\"\(BreakTimerModel.format(remaining: remaining))\"," +
-               "\"finish\":\"\(finish)\",\"title\":\"\(titleText)\"}"
+               "\"finish\":\"\(finish)\",\"title\":\"\(titleText)\"," +
+               "\"lunch\":\(isLunch),\"greeting\":\(LunchGreeting.stateJSON())}"
     }
 
     /// What the ☕️🔒 lock-screen card should say right now — nil unless a real break
