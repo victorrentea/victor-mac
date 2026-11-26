@@ -98,6 +98,20 @@ enum BreakTimerModel {
         return String(json.dropLast()) + ",\"untilBreak\":\(running)}"
     }
 
+    /// 🔔 The `/ping` fragment that arms the tablet's break-over bell (2026-11-26,
+    /// Victor: *"the Victor Android application should ring when the break is over
+    /// but only if the screen is locked"*). `secondsLeft` is the real break's time
+    /// left — nil while paused or with no real break up (no ⏱️ Timer, no UNTIL BREAK
+    /// vote), 0 while the expiry gongs. Seconds, not a wall time: the tablet adds
+    /// them to its own monotonic clock, so a wrong tablet clock cannot move the bell.
+    /// It keeps saying 0 through the gongs on purpose — a ping that dropped the key
+    /// at zero would race the tablet's own countdown and cancel the very ring.
+    /// The tablet decides about the lock (it already reads `macScreenLocked`).
+    static func tabletBellField(secondsLeft: Int?) -> String {
+        guard let secondsLeft else { return "" }
+        return ",\"breakLeftS\":\(max(0, secondsLeft))"
+    }
+
     /// Format remaining seconds as `MM:SS`. Minutes are NOT capped at 59 — one
     /// hour shows `60:00` to keep the two-group "watch" look. Negative values
     /// clamp to `00:00`.

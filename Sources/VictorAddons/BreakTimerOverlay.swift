@@ -118,6 +118,13 @@ final class BreakTimerController {
         return (remaining, paused, panel.screen)
     }
 
+    /// 🔔 Seconds left of the real break, for the tablet's break-over bell: nil
+    /// while paused or with no real break, 0 during the expiry gongs.
+    var tabletBellSecondsLeft: Int? {
+        guard let running = runningBreak, !running.paused else { return nil }
+        return running.remaining
+    }
+
     /// What a landing ☕ "−1" does to the countdown on screen right now.
     var coffeeMinute: BreakTimerModel.CoffeeMinute {
         BreakTimerModel.coffeeMinute(title: titleText, remaining: remaining)

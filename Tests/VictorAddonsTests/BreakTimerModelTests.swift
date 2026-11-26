@@ -215,4 +215,20 @@ final class BreakTimerModelTests: XCTestCase {
         let err = "{\"error\":\"break timer unavailable\"}"
         XCTAssertEqual(BreakTimerModel.withUntilBreak(err, running: true), err)
     }
+
+    // MARK: - 🔔 the tablet's break-over bell
+
+    func testNoBreakOrAPausedOneArmsNoBell() {
+        XCTAssertEqual(BreakTimerModel.tabletBellField(secondsLeft: nil), "")
+    }
+
+    func testARunningBreakSendsItsSecondsLeft() {
+        XCTAssertEqual(BreakTimerModel.tabletBellField(secondsLeft: 412), ",\"breakLeftS\":412")
+    }
+
+    func testTheGongsKeepReportingZero() {
+        // Dropping the key at zero would race the tablet's own countdown.
+        XCTAssertEqual(BreakTimerModel.tabletBellField(secondsLeft: 0), ",\"breakLeftS\":0")
+        XCTAssertEqual(BreakTimerModel.tabletBellField(secondsLeft: -3), ",\"breakLeftS\":0")
+    }
 }

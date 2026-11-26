@@ -693,7 +693,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             // 🎙️ Flat, like every key here: the tablet starts its fast
             // `/voice/level` poll (USB/LAN only) while this is true.
             let voice = ",\"voiceSharing\":\(self?.shareWatch.isSharing == true)"
-            return ",\"macTimeMs\":\(macMs),\"macTz\":\"\(macTz)\",\"macLanIps\":[\(macLanIps)]\(phone)\(locked)\(ending)\(power)\(voice)"
+            // 🔔 The tablet rings when the break runs out while this Mac is
+            // locked — Victor walked out; unlocked means he is at the laptop.
+            let bell = BreakTimerModel.tabletBellField(secondsLeft: self?.breakTimer.tabletBellSecondsLeft)
+            return ",\"macTimeMs\":\(macMs),\"macTz\":\"\(macTz)\",\"macLanIps\":[\(macLanIps)]\(phone)\(locked)\(ending)\(power)\(voice)\(bell)"
         }
         tabletServer?.onVoiceRoute = { VoiceRoutes.handle($0) }
         tabletServer?.onPromptCapture = { [weak self] rawPrompt, source, cwd in
