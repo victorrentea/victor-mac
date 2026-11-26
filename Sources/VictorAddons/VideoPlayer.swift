@@ -34,8 +34,8 @@ import Foundation
 ///    every ScreenBrush stroke under the picture.
 ///
 /// 7. **✍️ A mid-clip prompt (2026-11-26)**, when the manifest entry has a
-///    `prompt`: at its second the clip freezes and a box in the middle holds just
-///    the default answer, selected (no question label — the clip just asked it); ⏎ rolls on and the answer is drawn, gold and
+///    `prompt`: at its second the clip freezes and the subtitle itself becomes
+///    editable — gold, at the bottom, the default answer selected (no box, no label); ⏎ rolls on and the answer is drawn, gold and
 ///    bold, during each of the prompt's cues — always, whatever ✓ Subtitles says,
 ///    because it is the punchline (Spartans: «HA-OOH!» reads BUILDERS!, or
 ///    TESTERS! if that is what he typed).
@@ -457,7 +457,6 @@ final class VideoWindow: NSWindow, NSTextFieldDelegate {
     /// The caption the cues show: the default until Victor answers.
     var promptAnswer: String { prompt?.caption(for: promptWord ?? "") ?? "" }
     var onPromptAnswered: (() -> Void)?
-    private let promptBox = NSView()
     private let promptField = NSTextField(string: "")
     private let answerLabel = NSTextField(labelWithString: "")
     private let answerOutline = NSTextField(labelWithString: "")
@@ -530,7 +529,7 @@ final class VideoWindow: NSWindow, NSTextFieldDelegate {
             label.isHidden = true
             view.addSubview(label)
         }
-        buildPromptBox(in: view, screenHeight: screenFrame.height)
+        buildPromptField(in: view)
         seekBar.alphaValue = 0
         seekBar.onScrub = { [weak self] seconds, final in
             self?.revealSeekBar()
@@ -635,51 +634,70 @@ final class VideoWindow: NSWindow, NSTextFieldDelegate {
 
     // MARK: ✍️ Prompt
 
-    private func buildPromptBox(in view: NSView, screenHeight: CGFloat) {
-        let size = max(28, screenHeight / 22)
-        promptBox.wantsLayer = true
-        promptBox.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.8).cgColor
-        promptBox.layer?.cornerRadius = size * 0.6
-        promptBox.layer?.borderColor = Self.gold.cgColor
-        promptBox.layer?.borderWidth = 3
-        promptBox.isHidden = true
-
-        promptField.font = .systemFont(ofSize: size * 1.3, weight: .bold)
-        promptField.textColor = Self.gold
+    /// The answer is edited IN the subtitle (Victor, 2026-11-26: "feel like I'm
+    /// editing the actual movie subtitle at the bottom"): no box, no label — the
+    /// field sits exactly where the caption is drawn, in its font and gold, over
+    /// the same black outline, with a transparent background.
+    private func buildPromptField(in view: NSView) {
         promptField.alignment = .center
         promptField.isBordered = false
+        promptField.isBezeled = false
+        promptField.drawsBackground = false
         promptField.focusRingType = .none
-        promptField.drawsBackground = true
-        promptField.backgroundColor = NSColor.white.withAlphaComponent(0.12)
+        promptField.textColor = Self.gold
+        promptField.font = answerFont
+        promptField.cell?.usesSingleLineMode = true
         promptField.delegate = self
-
-        promptBox.addSubview(promptField)
-        view.addSubview(promptBox)
+        promptField.isHidden = true
+        view.addSubview(promptField)   // above answerOutline, which stays behind it as the outline
     }
 
-    /// Frozen frame: the box in the middle of the picture, the current answer
-    /// in the field, all of it selected so typing replaces it. No question
-    /// label: Leonidas has just asked it (Victor: "useless label", 2026-11-26).
+    private var answerFont: NSFont { .systemFont(ofSize: captionFont.pointSize * 1.35, weight: .heavy) }
+
+    /// Frozen frame: the caption appears with the current answer selected, the
+    /// caret in it, so typing replaces it. ⏎ or ESC rolls on.
     func showPrompt() {
-        guard let prompt, let view = contentView else { return }
-        promptField.stringValue = promptWord ?? prompt.defaultAnswer
-        let video = playerLayer.videoRect.isEmpty ? view.bounds : playerLayer.videoRect
-        let w = min(video.width * 0.6, max(500, view.bounds.width * 0.45))
-        let fh = promptField.intrinsicContentSize.height + 12
-        let pad = fh * 0.35
-        let h = fh + 2 * pad
-        promptBox.frame = NSRect(x: video.midX - w / 2, y: video.midY - h / 2, width: w, height: h)
-        promptField.frame = NSRect(x: pad, y: pad, width: w - 2 * pad, height: fh)
-        promptBox.isHidden = false
+        guard let prompt else { return }
+        promptField.stringValue = shown(promptWord ?? prompt.defaultAnswer)
+        layOutAnswer(promptField.stringValue)
         answerLabel.isHidden = true
-        answerOutline.isHidden = true
+        answerOutline.isHidden = false
+        promptField.isHidden = false
         makeKeyAndOrderFront(nil)
         makeFirstResponder(promptField)
-        promptField.currentEditor()?.selectAll(nil)
+        if let editor = promptField.currentEditor() as? NSTextView {
+            editor.drawsBackground = false
+            editor.insertionPointColor = .white
+            editor.selectAll(nil)
+        }
+    }
+
+    /// As the caption will read it: uppercased when the prompt says so.
+    private func shown(_ word: String) -> String {
+        prompt?.uppercase == true ? word.uppercased() : word
+    }
+
+    /// Every keystroke: uppercase in place (caret kept) and redraw the outline
+    /// under the field, so it reads as the subtitle the whole time.
+    func controlTextDidChange(_ note: Notification) {
+        // Through the field editor's own storage: `promptField.stringValue = …`
+        // while editing ends the edit — the first letter typed rolled the clip on
+        // with the old word (2026-11-26).
+        guard let editor = promptField.currentEditor() as? NSTextView, let storage = editor.textStorage else { return }
+        let typed = editor.string
+        let up = shown(typed)
+        if up != typed {
+            let caret = editor.selectedRange()
+            storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: up)
+            let len = (up as NSString).length
+            editor.setSelectedRange(NSRange(location: min(caret.location, len), length: 0))
+        }
+        layOutAnswer(up)
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         guard control === promptField else { return false }
+        overlayInfo("VideoPlayer: ✍️ command \(NSStringFromSelector(selector))")
         switch selector {
         case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.cancelOperation(_:)):
             submitPrompt()
@@ -690,43 +708,54 @@ final class VideoWindow: NSWindow, NSTextFieldDelegate {
     }
 
     private func submitPrompt() {
-        guard prompt != nil, !promptBox.isHidden else { return }
+        guard prompt != nil, !promptField.isHidden else { return }
         promptWord = promptField.stringValue
-        promptBox.isHidden = true
+        promptField.isHidden = true
+        answerOutline.isHidden = true
         makeFirstResponder(nil)
         onPromptAnswered?()
     }
 
-    /// The answer, drawn during the prompt's cues: gold, bold, a third bigger
+    /// The answer, drawn during the prompt's cues: gold, heavy, a third bigger
     /// than a subtitle, outlined the same way. Not tied to ✓ Subtitles.
     func showPromptCaption(at seconds: Double) {
-        guard let prompt, promptBox.isHidden, prompt.showsCaption(at: seconds), !promptAnswer.isEmpty else {
+        guard promptField.isHidden else { return }   // being edited: the field is the caption
+        guard let prompt, prompt.showsCaption(at: seconds), !promptAnswer.isEmpty else {
             answerLabel.isHidden = true
             answerOutline.isHidden = true
             return
         }
-        let font = NSFont.systemFont(ofSize: captionFont.pointSize * 1.35, weight: .heavy)
+        layOutAnswer(promptAnswer)
+        answerLabel.isHidden = false
+        answerOutline.isHidden = false
+    }
+
+    /// Text and frame of the caption (label + outline + field all share them),
+    /// at the bottom of the picture where a subtitle goes.
+    private func layOutAnswer(_ text: String) {
+        let font = answerFont
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         let shadow = NSShadow()
         shadow.shadowColor = .black
         shadow.shadowBlurRadius = 8
         shadow.shadowOffset = NSSize(width: 0, height: -2)
-        answerLabel.attributedStringValue = NSAttributedString(string: promptAnswer, attributes: [
+        answerLabel.attributedStringValue = NSAttributedString(string: text, attributes: [
             .font: font, .foregroundColor: Self.gold, .paragraphStyle: paragraph,
         ])
-        answerOutline.attributedStringValue = NSAttributedString(string: promptAnswer, attributes: [
+        answerOutline.attributedStringValue = NSAttributedString(string: text, attributes: [
             .font: font, .foregroundColor: NSColor.black, .strokeColor: NSColor.black,
             .strokeWidth: 14, .shadow: shadow, .paragraphStyle: paragraph,
         ])
         let video = playerLayer.videoRect.isEmpty ? contentView?.bounds ?? frame : playerLayer.videoRect
         let width = video.width * 0.9
-        let height = answerLabel.sizeThatFits(NSSize(width: width, height: .greatestFiniteMagnitude)).height
-        answerLabel.frame = NSRect(x: video.minX + (video.width - width) / 2, y: video.minY + video.height * 0.05,
-                                   width: width, height: height)
-        answerOutline.frame = answerLabel.frame
-        answerLabel.isHidden = false
-        answerOutline.isHidden = false
+        let height = max(answerLabel.sizeThatFits(NSSize(width: width, height: .greatestFiniteMagnitude)).height,
+                         ceil(font.ascender - font.descender + font.leading) + 4)
+        let rect = NSRect(x: video.minX + (video.width - width) / 2, y: video.minY + video.height * 0.05,
+                          width: width, height: height)
+        answerLabel.frame = rect
+        answerOutline.frame = rect
+        promptField.frame = rect
     }
 
     /// Spartan gold, the colour BUILDERS! was first burned in (#FFCC00).
