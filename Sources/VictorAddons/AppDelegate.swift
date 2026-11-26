@@ -477,7 +477,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             // long as the clip is going to be up.
             guard let ms = VideoPlayer.shared.play(
                 id: id, fileURL: VideoLibrary.fileURL(for: entry), startSeconds: start,
-                holdEndSeconds: entry.holdEndSeconds ?? 0,
+                holdEndSeconds: entry.holdEndSeconds ?? 0, prompt: entry.prompt,
                 volume: VideoCeiling.volume(id: id, asked: VideoGain.volume(position: gain),
                                             sharing: self.shareWatch.isSharing)
             ) else { return nil }

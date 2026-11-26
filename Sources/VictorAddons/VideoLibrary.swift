@@ -24,6 +24,34 @@ enum VideoLibrary {
         /// the final frame (LGTM's "Looks Good To Me 💩"): rewinding takes the
         /// joke off the projector the instant it lands. Absent = rewind.
         let holdEndSeconds: Int?
+        /// ✍️ Stop the clip mid-way and ask Victor for a word, then caption the
+        /// clip with it (Spartans, 2026-11-26: "what is your profession?" → the
+        /// three shouts read whatever he typed, BUILDERS by default). Absent = none.
+        var prompt: Prompt? = nil
+    }
+
+    /// The mid-clip question (`VideoPlayer` pauses at `atSeconds`, file clock).
+    /// The answer is shown during each of `cues` (`[start, end]` pairs, file
+    /// clock), uppercased when `uppercase`, with `suffix` after it ("!").
+    struct Prompt: Codable, Equatable {
+        let atSeconds: Double
+        let question: String
+        let defaultAnswer: String
+        let cues: [[Double]]
+        var uppercase: Bool? = nil
+        var suffix: String? = nil
+
+        /// The caption a typed answer becomes; an empty answer keeps the default.
+        func caption(for answer: String) -> String {
+            let word = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = word.isEmpty ? defaultAnswer : word
+            return (uppercase == true ? text.uppercased() : text) + (suffix ?? "")
+        }
+
+        /// Is a caption up at `t`? Malformed pairs are skipped.
+        func showsCaption(at t: Double) -> Bool {
+            cues.contains { $0.count == 2 && $0[0] <= t && t < $0[1] }
+        }
     }
 
     /// Resolve the repo's `videos/` directory using the same root strategy as

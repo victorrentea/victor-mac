@@ -26,10 +26,19 @@ import Foundation
 ///    window is given that screen's `frame` verbatim — no AX coordinate flip,
 ///    no Spaces fullscreen, no waiting for a confirmation.
 ///
-/// 2. **Above every other window.** `.screenSaver` level with
-///    `canJoinAllSpaces` + `fullScreenAuxiliary`, so it shows over a
-///    full-screen deck and over the magnifier's PiP lens, on whichever Space the
-///    Retina is showing.
+/// 2. **Above every other window but ScreenBrush.** Level 28 (`VideoWindow.windowLevel`,
+///    the same as `GlassSpotlight`) with `canJoinAllSpaces` + `fullScreenAuxiliary`,
+///    so it shows over a full-screen deck and the menu bar, on whichever Space the
+///    Retina is showing — and *under* ScreenBrush's canvas at 29, so Victor can
+///    draw over a clip. It was `.screenSaver` (1000) until 2026-11-26, which put
+///    every ScreenBrush stroke under the picture.
+///
+/// 7. **✍️ A mid-clip prompt (2026-11-26)**, when the manifest entry has a
+///    `prompt`: at its second the clip freezes and a box asks the question with
+///    the default answer selected; ⏎ rolls on and the answer is drawn, gold and
+///    bold, during each of the prompt's cues — always, whatever ✓ Subtitles says,
+///    because it is the punchline (Spartans: «HA-OOH!» reads BUILDERS!, or
+///    TESTERS! if that is what he typed).
 ///
 /// 3. **The end: rewind and pause.** At the last frame the player seeks back
 ///    to the snippet's start second and pauses — **SPACE replays** it, ESC or
@@ -66,6 +75,8 @@ final class VideoPlayer {
     private var player: AVPlayer?
     private var endObserver: NSObjectProtocol?
     private var timeObserver: Any?
+    /// The ✍️ prompt's boundary observer (`VideoLibrary.Prompt.atSeconds`).
+    private var promptObserver: Any?
     /// The app that had focus before the clip took it, given it back on close.
     private var previousApp: NSRunningApplication?
 
@@ -91,7 +102,8 @@ final class VideoPlayer {
     /// Main thread only (AVPlayer + NSWindow); every caller is an HTTP handler,
     /// which `TabletHttpServer` runs inside `DispatchQueue.main.sync`.
     @discardableResult
-    func play(id: String, fileURL: URL, startSeconds: Int, holdEndSeconds: Int = 0, volume: Float = 1) -> Int? {
+    func play(id: String, fileURL: URL, startSeconds: Int, holdEndSeconds: Int = 0,
+              prompt: VideoLibrary.Prompt? = nil, volume: Float = 1) -> Int? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             overlayError("VideoPlayer: file not found: \(fileURL.path)")
             return nil
@@ -121,12 +133,22 @@ final class VideoPlayer {
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
         ) { [weak self] _ in self?.reachedEnd() }
+        if let prompt {
+            win.prompt = prompt
+            win.onPromptAnswered = { [weak self] in self?.promptAnswered() }
+            // Fires each time playback crosses the second — a replay asks again.
+            promptObserver = p.addBoundaryTimeObserver(
+                forTimes: [NSValue(time: CMTime(seconds: prompt.atSeconds, preferredTimescale: 600))],
+                queue: .main
+            ) { [weak self] in self?.askPrompt() }
+        }
         // Every clip now, not only a subtitled one: the seek bar follows it too.
         timeObserver = p.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main
         ) { [weak win, weak item] t in
             let now = CMTimeGetSeconds(t)
             if win?.subtitles.isEmpty == false { win?.showSubtitle(at: now) }
+            win?.showPromptCaption(at: now)
             let d = item.map { CMTimeGetSeconds($0.duration) } ?? 0
             win?.showProgress(at: now, of: d.isFinite ? d : 0)
         }
@@ -208,6 +230,10 @@ final class VideoPlayer {
             player.removeTimeObserver(timeObserver)
         }
         timeObserver = nil
+        if let promptObserver, let player {
+            player.removeTimeObserver(promptObserver)
+        }
+        promptObserver = nil
         player?.pause()
         player = nil
         if let window {
@@ -341,6 +367,33 @@ final class VideoPlayer {
         player.play()
     }
 
+    // MARK: - ✍️ The mid-clip prompt
+
+    /// Playback crossed the prompt's second: freeze the frame and ask. The
+    /// tablet keeps its page pinned and the auto-kill restarts, so a slow answer
+    /// is not cut off — but the clip still closes itself if nobody ever answers.
+    private func askPrompt() {
+        guard let player, let window, window.prompt != nil, player.rate > 0 else { return }
+        player.pause()
+        activeDeadline = Date().addingTimeInterval(autoKillAfter)
+        scheduleAutoKill()
+        // ScreenBrush or the deck may hold the keyboard: the field needs it.
+        NSApp.activate(ignoringOtherApps: true)
+        window.showPrompt()
+        overlayInfo("VideoPlayer: ✍️ paused for the prompt at \(window.prompt?.atSeconds ?? 0)s")
+    }
+
+    /// ⏎ (or ESC, which keeps what is in the field): roll on, with the clip's
+    /// remaining length as the tablet's new deadline.
+    private func promptAnswered() {
+        guard let player, let item = player.currentItem else { return }
+        let left = CMTimeGetSeconds(item.duration) - CMTimeGetSeconds(player.currentTime())
+        activeDeadline = Date().addingTimeInterval(left.isFinite ? max(1, left) : autoKillAfter)
+        scheduleAutoKill()
+        overlayInfo("VideoPlayer: ✍️ answer \"\(window?.promptAnswer ?? "")\"")
+        player.play()
+    }
+
     // MARK: - Seeking (← / → and the seek bar)
 
     /// ← / →: five seconds back or forward from where the clip is now.
@@ -393,7 +446,23 @@ final class VideoPlayer {
 
 /// A borderless black window the size of one screen, showing an `AVPlayerLayer`
 /// and, under it, a caption. Key so SPACE / ESC reach it.
-final class VideoWindow: NSWindow {
+final class VideoWindow: NSWindow, NSTextFieldDelegate {
+    /// One under ScreenBrush's drawing canvas (29), like `GlassSpotlight`.
+    static let windowLevel = NSWindow.Level(rawValue: GlassSpotlight.windowLevel)
+
+    // ✍️ The mid-clip prompt (see `VideoPlayer`, point 7).
+    var prompt: VideoLibrary.Prompt?
+    /// What Victor typed last (nil = not asked yet), offered back on a replay.
+    private var promptWord: String?
+    /// The caption the cues show: the default until Victor answers.
+    var promptAnswer: String { prompt?.caption(for: promptWord ?? "") ?? "" }
+    var onPromptAnswered: (() -> Void)?
+    private let promptBox = NSView()
+    private let promptQuestion = NSTextField(labelWithString: "")
+    private let promptField = NSTextField(string: "")
+    private let answerLabel = NSTextField(labelWithString: "")
+    private let answerOutline = NSTextField(labelWithString: "")
+
     var onSpace: (() -> Void)?
     var onEscape: (() -> Void)?
     /// ← / →, in seconds (±`arrowStep`).
@@ -425,8 +494,10 @@ final class VideoWindow: NSWindow {
         // Regular, not heavy: heavy plus the outline read as shouting (2026-10-15).
         captionFont = .systemFont(ofSize: max(36, screenFrame.height / 15), weight: .regular)
         super.init(contentRect: screenFrame, styleMask: [.borderless], backing: .buffered, defer: false)
-        // Above a full-screen app and the PiP magnifier lens, on every Space.
-        level = .screenSaver
+        // Above a full-screen app and the menu bar, on every Space — but one under
+        // ScreenBrush's drawing canvas (29), so Victor can draw over a clip
+        // (2026-11-26; it was `.screenSaver`, which hid every stroke under it).
+        level = Self.windowLevel
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         isOpaque = true
         backgroundColor = .black
@@ -453,6 +524,14 @@ final class VideoWindow: NSWindow {
             label.isHidden = true
             view.addSubview(label)
         }
+        answerLabel.alignment = .center
+        for label in [answerOutline, answerLabel] {
+            label.drawsBackground = false
+            label.maximumNumberOfLines = 2
+            label.isHidden = true
+            view.addSubview(label)
+        }
+        buildPromptBox(in: view, screenHeight: screenFrame.height)
         seekBar.alphaValue = 0
         seekBar.onScrub = { [weak self] seconds, final in
             self?.revealSeekBar()
@@ -554,6 +633,112 @@ final class VideoWindow: NSWindow {
         caption.isHidden = false
         captionOutline.isHidden = false
     }
+
+    // MARK: ✍️ Prompt
+
+    private func buildPromptBox(in view: NSView, screenHeight: CGFloat) {
+        let size = max(28, screenHeight / 22)
+        promptBox.wantsLayer = true
+        promptBox.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.8).cgColor
+        promptBox.layer?.cornerRadius = size * 0.6
+        promptBox.layer?.borderColor = Self.gold.cgColor
+        promptBox.layer?.borderWidth = 3
+        promptBox.isHidden = true
+
+        promptQuestion.font = .systemFont(ofSize: size, weight: .semibold)
+        promptQuestion.textColor = .white
+        promptQuestion.alignment = .center
+
+        promptField.font = .systemFont(ofSize: size * 1.3, weight: .bold)
+        promptField.textColor = Self.gold
+        promptField.alignment = .center
+        promptField.isBordered = false
+        promptField.focusRingType = .none
+        promptField.drawsBackground = true
+        promptField.backgroundColor = NSColor.white.withAlphaComponent(0.12)
+        promptField.delegate = self
+
+        promptBox.addSubview(promptQuestion)
+        promptBox.addSubview(promptField)
+        view.addSubview(promptBox)
+    }
+
+    /// Frozen frame: the box in the middle of the picture, the current answer
+    /// in the field, all of it selected so typing replaces it.
+    func showPrompt() {
+        guard let prompt, let view = contentView else { return }
+        promptQuestion.stringValue = prompt.question
+        promptField.stringValue = promptWord ?? prompt.defaultAnswer
+        let video = playerLayer.videoRect.isEmpty ? view.bounds : playerLayer.videoRect
+        let w = min(video.width * 0.6, max(500, view.bounds.width * 0.45))
+        let qh = promptQuestion.intrinsicContentSize.height
+        let fh = promptField.intrinsicContentSize.height + 12
+        let pad = qh * 0.6
+        let h = pad * 3 + qh + fh
+        promptBox.frame = NSRect(x: video.midX - w / 2, y: video.midY - h / 2, width: w, height: h)
+        promptQuestion.frame = NSRect(x: pad, y: h - pad - qh, width: w - 2 * pad, height: qh)
+        promptField.frame = NSRect(x: pad * 2, y: pad, width: w - 4 * pad, height: fh)
+        promptBox.isHidden = false
+        answerLabel.isHidden = true
+        answerOutline.isHidden = true
+        makeKeyAndOrderFront(nil)
+        makeFirstResponder(promptField)
+        promptField.currentEditor()?.selectAll(nil)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard control === promptField else { return false }
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.cancelOperation(_:)):
+            submitPrompt()
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func submitPrompt() {
+        guard prompt != nil, !promptBox.isHidden else { return }
+        promptWord = promptField.stringValue
+        promptBox.isHidden = true
+        makeFirstResponder(nil)
+        onPromptAnswered?()
+    }
+
+    /// The answer, drawn during the prompt's cues: gold, bold, a third bigger
+    /// than a subtitle, outlined the same way. Not tied to ✓ Subtitles.
+    func showPromptCaption(at seconds: Double) {
+        guard let prompt, promptBox.isHidden, prompt.showsCaption(at: seconds), !promptAnswer.isEmpty else {
+            answerLabel.isHidden = true
+            answerOutline.isHidden = true
+            return
+        }
+        let font = NSFont.systemFont(ofSize: captionFont.pointSize * 1.35, weight: .heavy)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let shadow = NSShadow()
+        shadow.shadowColor = .black
+        shadow.shadowBlurRadius = 8
+        shadow.shadowOffset = NSSize(width: 0, height: -2)
+        answerLabel.attributedStringValue = NSAttributedString(string: promptAnswer, attributes: [
+            .font: font, .foregroundColor: Self.gold, .paragraphStyle: paragraph,
+        ])
+        answerOutline.attributedStringValue = NSAttributedString(string: promptAnswer, attributes: [
+            .font: font, .foregroundColor: NSColor.black, .strokeColor: NSColor.black,
+            .strokeWidth: 14, .shadow: shadow, .paragraphStyle: paragraph,
+        ])
+        let video = playerLayer.videoRect.isEmpty ? contentView?.bounds ?? frame : playerLayer.videoRect
+        let width = video.width * 0.9
+        let height = answerLabel.sizeThatFits(NSSize(width: width, height: .greatestFiniteMagnitude)).height
+        answerLabel.frame = NSRect(x: video.minX + (video.width - width) / 2, y: video.minY + video.height * 0.05,
+                                   width: width, height: height)
+        answerOutline.frame = answerLabel.frame
+        answerLabel.isHidden = false
+        answerOutline.isHidden = false
+    }
+
+    /// Spartan gold, the colour BUILDERS! was first burned in (#FFCC00).
+    static let gold = NSColor(red: 1, green: 0.8, blue: 0, alpha: 1)
 
     /// A `<font color=…>` value: a few names, or `#RRGGBB`. White otherwise.
     static func color(_ value: String?) -> NSColor {
