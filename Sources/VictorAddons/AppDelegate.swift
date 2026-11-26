@@ -1874,6 +1874,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 return (b.remaining, b.paused, self.breakTimer.breakStartedAt)
             },
             onExtend: { [weak self] seconds in self?.breakTimer.addSeconds(seconds) })
+        breakPhoneMirror.onRestart = { [weak self] minutes in self?.startBreak(minutes: minutes) }
         breakPhoneMirror.start()
         self.breakPhoneMirror = breakPhoneMirror
         tabletServer?.onBreakFromPhone = { [weak breakPhoneMirror] sealed in

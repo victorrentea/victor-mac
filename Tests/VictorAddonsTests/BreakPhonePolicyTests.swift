@@ -84,6 +84,12 @@ final class BreakPhonePolicyTests: XCTestCase {
         XCTAssertEqual(ask(["seconds": 3600]), .extend(seconds: 300))
     }
 
+    /// A phone that restarted (an update mid-break) asks again; no break id needed.
+    func testSyncAsksForTheStateAgain() {
+        XCTAssertEqual(ask(["action": "sync"], current: nil), .sync)
+        XCTAssertEqual(ask(["action": "sync"]), .sync)
+    }
+
     func testWhatIsRefusedOrIgnored() {
         XCTAssertEqual(ask(["from": "phone"]), .ignore)                                  // a clip
         XCTAssertEqual(ask(seen: ["r1"]), .ignore)                                       // its other way
@@ -91,6 +97,22 @@ final class BreakPhonePolicyTests: XCTestCase {
         XCTAssertEqual(ask(["breakId": NSNumber(value: 1)]), .refused("another break"))
         XCTAssertEqual(ask(current: nil), .refused("no break running"))
         XCTAssertEqual(ask(["action": "close"]), .refused("unknown action"))
+    }
+
+    /// The phone rang, Victor taps +5 after the gongs: a new 5-minute break, only for the
+    /// break that just ended and only shortly after.
+    func testPlusFiveRightAfterTheEndStartsANewBreak() {
+        let id: Int64 = 1_800_000_000_000
+        func after(_ ms: Int64, ended: Int64 = id) -> BreakPhonePolicy.Ask {
+            BreakPhonePolicy.ask(["id": "r9", "ts": NSNumber(value: nowMs), "from": "phone-break",
+                                  "action": "extend", "breakId": NSNumber(value: id)],
+                                 currentBreakId: nil, seen: [], nowMs: nowMs, lastEnded: (ended, nowMs - ms))
+        }
+        XCTAssertEqual(after(10_000), .restart(minutes: 5))
+        XCTAssertEqual(after(10_000, ended: 1), .refused("no break running"))
+        XCTAssertEqual(after(300_000), .refused("no break running"))
+        // Still gonging at zero, the watch is on screen: a plain extend.
+        XCTAssertEqual(ask(), .extend(seconds: 300))
     }
 
     /// The phone's `ClipSync.open` reads exactly this: nonce + ciphertext + tag, base64url.

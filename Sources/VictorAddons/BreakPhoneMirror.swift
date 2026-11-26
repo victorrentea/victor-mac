@@ -70,8 +70,16 @@ enum BreakPhonePolicy {
         return o
     }
 
+    /// How long after a break ended the phone's +5 still counts: it rings at the end, and Victor
+    /// reaches for it at the table (2026-11-27). Past this, a stale tap starts nothing.
+    static let restartWindowMs: Int64 = 120_000
+
     enum Ask: Equatable {
         case extend(seconds: Int)
+        /// The break already ended (its watch is gone): a new one of this length.
+        case restart(minutes: Int)
+        /// The phone (re)started — an update, a reboot — and asks for the state again.
+        case sync
         /// Not for us at all (a clip, victor-net's business): no log line.
         case ignore
         case refused(String)
@@ -79,16 +87,26 @@ enum BreakPhonePolicy {
 
     /// One opened envelope from the phone. Only an extend of the break on screen now,
     /// fresh and never seen, is believed; the seal itself proved it came from the phone.
-    static func ask(_ o: [String: Any], currentBreakId: Int64?, seen: Set<String>, nowMs: Int64) -> Ask {
+    static func ask(_ o: [String: Any], currentBreakId: Int64?, seen: Set<String>, nowMs: Int64,
+                    lastEnded: (breakId: Int64, atMs: Int64)? = nil) -> Ask {
         guard o["from"] as? String == fromPhone else { return .ignore }
         guard let id = o["id"] as? String, !id.isEmpty else { return .refused("no id") }
         if seen.contains(id) { return .ignore }   // the same request by its other way
         guard let ts = (o["ts"] as? NSNumber)?.int64Value, abs(nowMs - ts) < maxAskAgeMs else {
             return .refused("stale")
         }
+        if o["action"] as? String == "sync" { return .sync }
         guard o["action"] as? String == "extend" else { return .refused("unknown action") }
-        guard let current = currentBreakId else { return .refused("no break running") }
-        guard (o["breakId"] as? NSNumber)?.int64Value == current else { return .refused("another break") }
+        let asked = (o["breakId"] as? NSNumber)?.int64Value
+        guard let current = currentBreakId else {
+            // Rang and ended (the gongs are over): +5 from the phone is a new 5-minute break.
+            if let lastEnded, asked == lastEnded.breakId, nowMs - lastEnded.atMs < restartWindowMs {
+                return .restart(minutes: extendSeconds / 60)
+            }
+            return .refused("no break running")
+        }
+        // While the watch gongs at zero it is still on screen: +5 extends it as any other time.
+        guard asked == current else { return .refused("another break") }
         return .extend(seconds: extendSeconds)
     }
 }
@@ -154,6 +172,10 @@ final class BreakPhoneMirror {
 
     private let breakState: () -> Running?
     private let onExtend: (Int) -> Void
+    /// Starts a new break of these minutes, as the menu does (`AppDelegate.startBreak`).
+    var onRestart: ((Int) -> Void)?
+    /// The break that went last, and when: the phone's +5 right after its alarm still counts.
+    private var lastEnded: (breakId: Int64, atMs: Int64)?
     private let config: [String: String]
     private let key: SymmetricKey?
     private var relayURL: String { config["RELAY_URL"] ?? "" }
@@ -214,7 +236,10 @@ final class BreakPhoneMirror {
         let state = current(now: now)
         let previous = lastSeen
         lastSeen = state
-        if state != nil, !polling { poll() }
+        if state == nil, let previous {
+            lastEnded = (previous.breakId, Int64(now.timeIntervalSince1970 * 1000))
+        }
+        if listening(now: now), !polling { poll() }
         // At launch with no break there is nothing to clear: a phone with a stale
         // countdown still gets the "none" on the first real change.
         if !everTold, state == nil { return }
@@ -320,7 +345,7 @@ final class BreakPhoneMirror {
                 }
                 let again = { [weak self] in
                     guard let self else { return }
-                    if self.breakState() != nil { self.poll() } else { self.polling = false }
+                    if self.listening(now: Date()) { self.poll() } else { self.polling = false }
                 }
                 if answer == nil {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: again)
@@ -329,6 +354,13 @@ final class BreakPhoneMirror {
                 }
             }
         }.resume()
+    }
+
+    /// The phone's +5 is listened for while a break runs and for a while after it ended.
+    private func listening(now: Date) -> Bool {
+        if breakState() != nil { return true }
+        guard let lastEnded else { return false }
+        return Int64(now.timeIntervalSince1970 * 1000) - lastEnded.atMs < BreakPhonePolicy.restartWindowMs
     }
 
     /// One sealed request from the phone, by Railway or by `/break/phone`. Main thread.
@@ -340,7 +372,8 @@ final class BreakPhoneMirror {
         let now = Date()
         let breakId = current(now: now)?.breakId
         let verdict = BreakPhonePolicy.ask(o, currentBreakId: breakId, seen: Set(seen),
-                                           nowMs: Int64(now.timeIntervalSince1970 * 1000))
+                                           nowMs: Int64(now.timeIntervalSince1970 * 1000),
+                                           lastEnded: lastEnded)
         if let id = o["id"] as? String, verdict != .ignore { seen = Array((seen + [id]).suffix(64)) }
         switch verdict {
         case .ignore:
@@ -355,6 +388,19 @@ final class BreakPhoneMirror {
             onExtend(seconds)
             tick()   // the new end goes back at once
             return "{\"ok\":true,\"extendedS\":\(seconds)}"
+        case .sync:
+            lastAsk = (now, "sync via \(via)")
+            guard everTold else { return "{\"ok\":true}" }
+            overlayInfo("📱 the phone asks for the break's state again (via \(via))")
+            send(current(now: now), expired: false)
+            return "{\"ok\":true}"
+        case .restart(let minutes):
+            lastAsk = (now, "new \(minutes)-min break via \(via)")
+            overlayInfo("📱 phone asks +\(minutes) after the break ended: a new \(minutes)-min break (via \(via))")
+            lastEnded = nil
+            onRestart?(minutes)
+            tick()
+            return "{\"ok\":true,\"restartedMin\":\(minutes)}"
         }
     }
 
