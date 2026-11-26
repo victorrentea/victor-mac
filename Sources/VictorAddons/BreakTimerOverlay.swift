@@ -169,7 +169,13 @@ final class BreakTimerController {
     /// no-op with no window up, so a pre-break pick just lands in UserDefaults and
     /// is picked up by the next `start()`.
     func selectCountry(_ c: BreakCountry) {
+        let changed = c.tz != selectedCountry.tz
         selectedCountry = c
+        // 🍽️ A lunch already running in the wrong country (the remote session
+        // where the country was never set): say it again, in the room's language.
+        if changed, isLunch, panel != nil, !isStopwatch, BreakTimerModel.endsABreak(title: titleText) {
+            LunchGreeting.speak(for: c)
+        }
         c.saveSelected()
         view?.selectedCountryTZ = c.tz
         refresh()
@@ -207,6 +213,16 @@ final class BreakTimerController {
         set { UserDefaults.standard.set(newValue, forKey: Self.kBreakStartedAt) }
     }
 
+    /// The running break is a lunch (started at ≥ 30 min) and has been greeted
+    /// with 🍽️ `LunchGreeting`. Persisted beside the countdown, so a redeploy
+    /// mid-lunch still replays the greeting on a country change — and never
+    /// greets twice for one lunch on a re-click (45 min → 1 hour).
+    private static let kIsLunch = "BreakTimer.isLunch"
+    private var isLunch: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.kIsLunch) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.kIsLunch) }
+    }
+
     /// Fired the moment the ☕-started "UNTIL BREAK" watch hits zero — the room
     /// voted a break in and it is now due, so the next thing Victor does is pick
     /// its length. Fired at zero, not at the close ~2 gongs later.
@@ -227,6 +243,7 @@ final class BreakTimerController {
         if BreakTimerModel.endsABreak(title: title),
            panel == nil || !BreakTimerModel.endsABreak(title: titleText) {
             breakStartedAt = Date()
+            isLunch = false
         }
         epoch += 1
         skipBlackoutOnClose = false
@@ -239,6 +256,13 @@ final class BreakTimerController {
         // Day-scoped: first start of the day auto-picks "where I am now" (by the
         // Mac's live timezone) and locks it in; later starts today reuse it.
         selectedCountry = BreakCountry.autoSelectForToday()
+        // 🍽️ Once per lunch: a 15-min break re-clicked to an hour becomes lunch
+        // and is greeted; a lunch re-clicked to another length is not again.
+        if !isStopwatch, BreakTimerModel.endsABreak(title: title),
+           LunchGreeting.isLunch(minutes: minutes), !isLunch {
+            isLunch = true
+            LunchGreeting.speak(for: selectedCountry)
+        }
 
         let isFresh = (panel == nil)
         let view = ensureWindow()
@@ -538,6 +562,7 @@ final class BreakTimerController {
         UserDefaults.standard.removeObject(forKey: Self.kPausedRemaining)
         UserDefaults.standard.removeObject(forKey: Self.kTitle)
         UserDefaults.standard.removeObject(forKey: Self.kScale)
+        UserDefaults.standard.removeObject(forKey: Self.kIsLunch)
     }
 
     /// On launch, resume a countdown that was running/paused when the app quit.

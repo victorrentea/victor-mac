@@ -74,6 +74,9 @@ case testTerminalFont
         case testBreakState
         /// Open the country picker on the Break overlay, optionally pre-filtered (test hook).
         case testBreakPicker(String?)
+        /// Pick the ☕️ country by ISO code or IANA zone, as the dropdown does (test hook) —
+        /// replays the 🍽️ lunch greeting when a lunch is running.
+        case testBreakCountry(String?)
         /// Arm the Break overlay's scroll capture with no press, as a lost mouseUp would (test hook).
         case testBreakLeakScrollCapture(buttonStuck: Bool, maxSeconds: Double?)
         case testBreakLockNotice(seconds: Double?)
@@ -339,6 +342,7 @@ case testTerminalFont
     var onTestBreakUntil: (() -> Void)?
     var onTestBreakClose: (() -> Void)?
     var onTestBreakPicker: ((String?) -> Void)?
+    var onTestBreakCountry: ((String?) -> Void)?
     var onTestBreakLeakScrollCapture: ((Bool, Double?) -> String)?
     var onTestBreakPause: (() -> String)?
     var onTestBreakState: (() -> String)?
@@ -717,6 +721,8 @@ case testTerminalFont
                 body = self.onTestBreakState?() ?? "{\"error\":\"break timer unavailable\"}"
             case .testBreakPicker(let q):
                 self.onTestBreakPicker?(q)
+            case .testBreakCountry(let q):
+                self.onTestBreakCountry?(q)
             case .testBreakLeakScrollCapture(let stuck, let maxSeconds):
                 contentType = "application/json"
                 body = self.onTestBreakLeakScrollCapture?(stuck, maxSeconds) ?? "{\"error\":\"break timer unavailable\"}"
@@ -1174,6 +1180,8 @@ case testTerminalFont
             return .testBreakState
         case "/test/break/picker":
             return .testBreakPicker(queryItems.first(where: { $0.name == "q" })?.value)
+        case "/test/break/country":
+            return .testBreakCountry(queryItems.first(where: { $0.name == "q" })?.value)
         case "/test/break/leak-scroll-capture":
             return .testBreakLeakScrollCapture(
                 buttonStuck: queryItems.first(where: { $0.name == "held" })?.value == "1",

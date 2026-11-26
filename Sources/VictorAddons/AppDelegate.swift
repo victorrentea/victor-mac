@@ -1347,6 +1347,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         tabletServer?.onTestBreakPicker = { [weak self] q in
             DispatchQueue.main.async { self?.breakTimer.openCountryPicker(query: q) }
         }
+        // /test/break/country?q=NL (or ?q=Europe/Amsterdam) — the dropdown's pick, headless.
+        tabletServer?.onTestBreakCountry = { [weak self] q in
+            guard let q, let c = BreakCountry.all.first(where: {
+                $0.iso.caseInsensitiveCompare(q) == .orderedSame || $0.tz == q }) else { return }
+            DispatchQueue.main.async { self?.breakTimer.selectCountry(c) }
+        }
         // /test/break/leak-scroll-capture — the guard that keeps a lost mouseUp from
         // killing every scroll on the Mac. Already on main (the route switch runs in
         // `DispatchQueue.main.sync`). The ⏱️ stopwatch is the same view, and the one
