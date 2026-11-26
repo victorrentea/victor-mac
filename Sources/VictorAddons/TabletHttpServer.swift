@@ -72,6 +72,8 @@ case testTerminalFont
         case testBreakPause
         /// Read-only snapshot of what the Break overlay is displaying (test hook).
         case testBreakState
+        case testBreakPhone
+        case breakFromPhone(String)
         /// Open the country picker on the Break overlay, optionally pre-filtered (test hook).
         case testBreakPicker(String?)
         /// Pick the ☕️ country by ISO code or IANA zone, as the dropdown does (test hook) —
@@ -346,6 +348,9 @@ case testTerminalFont
     var onTestBreakLeakScrollCapture: ((Bool, Double?) -> String)?
     var onTestBreakPause: (() -> String)?
     var onTestBreakState: (() -> String)?
+    var onTestBreakPhone: (() -> String)?
+    /// 📱 `/break/phone?c=<sealed>`: the phone's +5 over a LAN (`BreakPhoneMirror.take`).
+    var onBreakFromPhone: ((String) -> String)?
     var onTestBreakLockNotice: ((Double?) -> String)?
     var onTestStopwatch: ((String) -> String)?
     var onTestTile: (() -> Void)?
@@ -719,6 +724,12 @@ case testTerminalFont
             case .testBreakState:
                 contentType = "application/json"
                 body = self.onTestBreakState?() ?? "{\"error\":\"break timer unavailable\"}"
+            case .testBreakPhone:
+                contentType = "application/json"
+                body = self.onTestBreakPhone?() ?? "{\"enabled\":false}"
+            case .breakFromPhone(let sealed):
+                contentType = "application/json"
+                body = self.onBreakFromPhone?(sealed) ?? "{\"ok\":false,\"error\":\"off\"}"
             case .testBreakPicker(let q):
                 self.onTestBreakPicker?(q)
             case .testBreakCountry(let q):
@@ -1178,6 +1189,10 @@ case testTerminalFont
             return .testBreakPause
         case "/test/break/state":
             return .testBreakState
+        case "/test/break/phone":
+            return .testBreakPhone
+        case "/break/phone":
+            return .breakFromPhone(queryItems.first(where: { $0.name == "c" })?.value ?? "")
         case "/test/break/picker":
             return .testBreakPicker(queryItems.first(where: { $0.name == "q" })?.value)
         case "/test/break/country":

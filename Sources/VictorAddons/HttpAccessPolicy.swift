@@ -28,6 +28,7 @@ enum HttpAccessPolicy {
     static func decide(path: String, local: Bool, tokenValid: Bool, armed: Bool) -> Decision {
         if local { return .serve }
         if !tabletMayCall(path) { return .routeRefused }
+        if carriesItsOwnSeal(path) { return .serve }
         return armed && !tokenValid ? .tokenRefused : .serve
     }
 
@@ -150,7 +151,19 @@ enum HttpAccessPolicy {
     }
 
     private static let exact: Set<String> = ["/ping", "/tiles", "/usage", "/videos",
-                                             "/alarm", "/bt-compensation", "/voice/level"]
+                                             "/alarm", "/bt-compensation", "/voice/level",
+                                             "/break/phone"]
+
+    /// 📱 Routes whose payload is AES-GCM sealed with the phone's `CLIP_KEY`
+    /// (`BreakPhoneMirror`): the seal is a stronger proof than the tablet's
+    /// `X-Lan-Token`, which the phone does not hold (it has the relay's token, not
+    /// this Mac's), so they skip that check. Whatever does not open is refused there.
+    private static let sealed: Set<String> = ["/break/phone"]
+
+    static func carriesItsOwnSeal(_ path: String) -> Bool {
+        guard let pathOnly = URLComponents(string: "http://x" + path)?.path else { return false }
+        return sealed.contains(pathOnly)
+    }
     private static let prefixes = ["/sound/", "/sounds/", "/tiles/", "/usage/", "/video/",
                                    "/effect/", "/alarm/", "/bt-compensation/"]
 

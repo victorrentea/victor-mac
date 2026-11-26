@@ -95,6 +95,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var tartVMIndicator: TartVMIndicator?
     private var brainBattery: BrainBatteryIndicator?
     private var breakTimeMirror: BreakTimeMirror?
+    private var breakPhoneMirror: BreakPhoneMirror?
     /// ☕ The voted countdown to the break, in the 🧠 slot of the menu bar.
     private let untilBreak = UntilBreakCountdown()
     /// Drives Whisper purely off the power source: on AC → transcribe, on
@@ -1864,6 +1865,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         breakTimeMirror.onBreakActive = { [weak brainBattery] on in brainBattery?.setBreakActive(on) }
         breakTimeMirror.start()
         self.breakTimeMirror = breakTimeMirror
+
+        // 📱 …and on the phone: a countdown notification that rings at the end,
+        // with a +5 that comes back here (`BreakPhoneMirror`).
+        let breakPhoneMirror = BreakPhoneMirror(
+            breakState: { [weak self] in
+                guard let self, let b = self.breakTimer.runningBreak else { return nil }
+                return (b.remaining, b.paused, self.breakTimer.breakStartedAt)
+            },
+            onExtend: { [weak self] seconds in self?.breakTimer.addSeconds(seconds) })
+        breakPhoneMirror.start()
+        self.breakPhoneMirror = breakPhoneMirror
+        tabletServer?.onBreakFromPhone = { [weak breakPhoneMirror] sealed in
+            breakPhoneMirror?.take(sealed, via: "lan") ?? "{\"ok\":false,\"error\":\"off\"}"
+        }
+        tabletServer?.onTestBreakPhone = { [weak breakPhoneMirror] in
+            breakPhoneMirror?.stateJSON() ?? "{\"enabled\":false}"
+        }
 
         let portKiller = PortKiller()
         self.portKiller = portKiller
