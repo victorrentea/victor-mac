@@ -147,3 +147,12 @@ Three greyed rows in 👩🏻‍💻 Extras — `⌃⌥⌘ ←→↑↓` half of
 All four rows, and the separate 📶 roaming meter status item, left for **Victor Net**
 (`victor-net`, its own menu bar icon — the cable / the phone's bars / Wi-Fi). Their reasoning
 went with them: `victor-net/docs/`. The 🛜/⏸ paragraphs above are history.
+
+## 🎤 → DJI logo in the 🎙️ menu (2026-11-27)
+
+Every 🎤 in a 🎙️-menu title (the DJI row, the `Auto:` ladder, the Transcribing row) is drawn as
+DJI's "dji" wordmark (`DjiLogo`, `Resources/mic_dji.png`, an alpha mask inked in the label colour
+— DJI's blue would vanish on a highlighted row). Inline in an attributed title, not
+`NSMenuItem.image`, so the other rows keep their indent; a disabled row greys words and logo by
+hand, since AppKit does not grey an attributed title. `MicRoster.glyph` stays 🎤: it is the
+contract with `whisper_runner.py` and Walkie Talkie, whose own menu still shows the emoji.

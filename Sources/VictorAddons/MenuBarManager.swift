@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 27, 19:22"
+    static let BUILD_TIME = "Nov 27, 21:29"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -1925,7 +1925,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // Not in the 🎙️ menu since 2026-11-25 (the 🟢/🟠/🟥 rows say it); the title is
         // still read by the debug endpoint.
         if powerState != .transcribing {
-            transcribeItem.title = TranscriptionMenu.tooltip(powerState)
+            DjiLogo.apply(TranscriptionMenu.tooltip(powerState), to: transcribeItem)
             return
         }
 
@@ -1947,12 +1947,13 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             // `🎙️ Transcribing: 🎤 DJI 80 %`, or `— no TX`), only while the
             // receiver's USB status is live; other microphones get nothing.
             let dji = mic?.id == "rx" ? djiMenuSuffix?().map { " \($0)" } ?? "" : ""
-            transcribeItem.title = "🎙️ Transcribing" + (mic.map { ": \($0.glyph) \($0.short)" } ?? "") + dji
+            DjiLogo.apply("🎙️ Transcribing" + (mic.map { ": \($0.glyph) \($0.short)" } ?? "") + dji,
+                          to: transcribeItem)
             transcribeItem.image = nil
         } else {
             // On AC but momentarily down (starting up, or a crash before the
             // heartbeat restart). Auto-recovers; nothing for the user to do.
-            transcribeItem.title = "🎙️ Transcribing (off)"
+            DjiLogo.apply("🎙️ Transcribing (off)", to: transcribeItem)
         }
     }
 
@@ -1964,6 +1965,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private func appendMicRows(to menu: NSMenu) {
         let auto = NSMenuItem(title: "Auto: \(MicRoster.ladder)",
                               action: #selector(pickSource(_:)), keyEquivalent: "")
+        DjiLogo.apply(auto.title, to: auto)   // the 🎤 in the ladder is drawn as DJI's logo
         auto.target = self
         auto.representedObject = MicPreference.automatic
         auto.state = (chosenMic == MicPreference.automatic) ? .on : .off
@@ -1983,6 +1985,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             item.target = self
             item.representedObject = mic.id
             item.isEnabled = here
+            DjiLogo.apply(item.title, to: item)   // after isEnabled: greys the logo too
             // **The tick follows what he asked for, not what is recording.**
             // The parent row above says which device is actually open, and a
             // pick whose device has been unplugged falls back to automatic — so
@@ -2071,7 +2074,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         appendMicRows(to: micMenu)
         let micRows: [[String: Any]] = micMenu.items
             .filter { !$0.isSeparatorItem && $0.representedObject is String }
-            .map { ["title": $0.title,
+            .map { ["title": DjiLogo.plainTitle($0),
                     "enabled": $0.isEnabled,
                     "ticked": $0.state == .on] }
         return TranscriptionDebugState(
@@ -2079,7 +2082,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             isStale: isTranscriptionStale,
             isPausedByBattery: isTranscriptionPausedByBattery,
             source: transcribeSource,
-            menuTitle: transcribeItem.title,
+            menuTitle: DjiLogo.plainTitle(transcribeItem),
             iconMode: iconMode,
             chosenMic: chosenMic,
             micRows: micRows
