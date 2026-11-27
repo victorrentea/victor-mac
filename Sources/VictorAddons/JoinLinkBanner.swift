@@ -10,6 +10,8 @@ import Foundation
 /// A click on the link itself shrinks it into the middle of the menu bar — no QR,
 /// no ✕, clear of the status icons on the right — and a click there brings it
 /// back large. Every show starts large.
+/// Under the large session link, a hand-written "enter this in your browser"
+/// points up at it (`JoinLinkHint`).
 class JoinLinkBanner: NSPanel {
     private let urlLabel: NSTextField
     private let clickView = BannerClickView()
@@ -78,6 +80,9 @@ class JoinLinkBanner: NSPanel {
     // The red ✕. Its own panel because the banner itself is click-through.
     private var closePanel: BannerClosePanel?
 
+    /// "enter this in your browser" under the large session link.
+    private let hint = JoinLinkHint()
+
     init(screen: NSScreen) {
         self.targetDisplayID = Self.displayID(of: screen)
 
@@ -139,6 +144,17 @@ class JoinLinkBanner: NSPanel {
             layoutLarge()
             qrPanel?.setFrame(Self.qrFrame(screen: targetScreen.frame, banner: frame, expanded: isQRExpanded), display: true)
             closePanel?.setFrame(BannerClosePanel.frame(inBanner: frame), display: true)
+            updateHint()
+        }
+    }
+
+    /// The hand-written hint: only under the session link, only while it is large
+    /// and the QR is in its corner (blown up, the QR fills that space).
+    private func updateHint() {
+        if bannerShowing, isSessionLink, !isCompact, !isQRExpanded, !isZooming {
+            hint.show(under: frame, on: targetScreen)
+        } else {
+            hint.hide()
         }
     }
 
@@ -210,6 +226,7 @@ class JoinLinkBanner: NSPanel {
         isQRExpanded = false
         showQR(for: shownUrl)
         showClose()
+        updateHint()
     }
 
     /// Large ⇄ compact over the menu bar: the link zooms from one into the other.
@@ -221,6 +238,7 @@ class JoinLinkBanner: NSPanel {
         if isCompact {
             hideQR(keepExpansion: true)
             closePanel?.orderOut(nil)
+            hint.hide()
             target = compactGeometry()
         } else {
             stopCompactRefit()
@@ -237,6 +255,7 @@ class JoinLinkBanner: NSPanel {
                 self.layoutLarge()
                 self.showQR(for: self.shownUrl)
                 self.showClose()
+                self.updateHint()
             }
         }
     }
@@ -459,6 +478,7 @@ class JoinLinkBanner: NSPanel {
         self.orderOut(nil)
         hideQR()
         closePanel?.orderOut(nil)
+        hint.hide()
     }
 
     var bannerIsVisible: Bool { bannerShowing }
@@ -498,6 +518,7 @@ class JoinLinkBanner: NSPanel {
     func toggleQRSize() {
         guard bannerShowing, !isCompact, let qrPanel = qrPanel else { return }
         isQRExpanded.toggle()
+        updateHint()
         let target = Self.qrFrame(screen: targetScreen.frame, banner: frame, expanded: isQRExpanded)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.25

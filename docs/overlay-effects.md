@@ -31,6 +31,13 @@ between this app and **Victor Effects**.
   **A click on the QR blows it up** to the largest square between the bottom of
   the screen and the link, a second click sends it back to its corner
   (`JoinLinkBanner.qrFrame`); every `show` starts small.
+  **"enter this in your browser"** (2026-11-27, `JoinLinkHint`): under the large
+  *session* link only, a hand-written line in Chalkduster (the hand of the sketch,
+  shipped with macOS, so nothing bundled), white with a black outline, climbing 6°
+  to the right into an arrow that points up at the link. Each letter rocks and bobs
+  on its own beat and the arrow nudges up, so the room looks there. A separate
+  click-through panel, centred, 42 % of the screen wide; hidden in the menu-bar pill
+  and while the QR is blown up (it would sit on it).
   **A click on the link shrinks it into the menu bar** (2026-11-18): a pill
   centred on the screen, as tall as the bar, with no QR and no ✕; a click on the
   pill brings it back large, the QR at the size it had. Every `show` starts large.
