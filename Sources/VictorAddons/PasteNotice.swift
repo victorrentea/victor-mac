@@ -8,6 +8,15 @@ import Cocoa
 /// of the stack), one pill per paste, **Copy** on top puts the whole text on the
 /// clipboard and leaves the pill up (marked ✅), **Dismiss** below takes it away.
 /// `clickOnly`: he works in that corner, a resting cursor must not copy or close.
+///
+/// 2026-11-27, Victor: *"copy should be copy plus send … that thing goes into the
+/// notes that I have opened for this current session"*. The top button starts as
+/// **Copy + Send**: it copies AND appends the text to the session notes as a `📋`
+/// line (`SessionNotesAppender.sendByHand`, the same line ⌘⌃S writes), then the
+/// pill floats up and away — Victor: *"if I clicked copy and send, why do I still
+/// see them?"*. Gone means sent, so a paste can never be written twice. If the
+/// write fails (no session / no notes file) the text is still copied, the failure
+/// flashes, and the pill stays up (✅) with Copy + Send for a retry.
 final class PasteNotice {
     private let screensProvider: () -> [NSScreen]
     /// Every pill still up, so none is released (and vanishes) while on screen.
@@ -30,7 +39,10 @@ final class PasteNotice {
     }
 
     /// Main thread.
-    func show(sender: String, text: String) {
+    /// `sendToNotes` writes the text into the session notes and says whether it
+    /// landed — injectable for tests; the app's is `SessionNotesAppender.sendByHand`.
+    func show(sender: String, text: String,
+              sendToNotes: @escaping (String) -> Bool = { SessionNotesAppender.sendByHand($0) }) {
         overlayInfo("📋 paste from \(sender) (\(text.count) chars) — pill up")
         let b = BottomLeftBanner(screensProvider: screensProvider, hoverable: true)
         let id = ObjectIdentifier(b)
@@ -39,14 +51,21 @@ final class PasteNotice {
         let present: (Bool) -> Void = { [weak b] copied in
             b?.show(text: Self.text(sender: sender, text: text, copied: copied),
                     font: NSFont.systemFont(ofSize: 20),
-                    autoAction: .copy, clickAction: .dismiss)
+                    autoAction: .copySend, clickAction: .dismiss)
         }
-        // Top button (no countdown fills it): copy, and stay up for another copy.
-        b.onHoverCountdownExpired = {
+        // Top button (no countdown fills it): copy, append to the notes, and leave
+        // upward. A failed append keeps the pill for another try.
+        b.onHoverCountdownExpired = { [weak self, weak b] in
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
-            overlayInfo("📋 copied the paste from \(sender)")
-            present(true)   // re-show re-arms both buttons
+            if sendToNotes(text) {
+                overlayInfo("📋 copied + sent to notes the paste from \(sender)")
+                b?.dismissRisingFade()
+                self?.banners[id] = nil
+            } else {
+                overlayInfo("📋 copied the paste from \(sender); notes NOT written")
+                present(true)   // re-show re-arms both buttons
+            }
         }
         b.onHover = { [weak self, weak b] in
             b?.dismissSinking()

@@ -280,6 +280,24 @@ enum SessionNotesAppender {
         }
     }
 
+    /// Append a hand-picked text to the notes as a `📋` line, without any pill —
+    /// the paste pill's **Copy + Send** button, whose click is the confirmation and
+    /// whose ✅ is the feedback. Failures flash like `sendPrompt`'s ("no active
+    /// session" / "no notes file"). Returns whether the line was written, so the
+    /// caller only retires the Send when it really landed.
+    @discardableResult
+    static func sendByHand(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        do {
+            _ = try writeNotes(trimmed, marker: .sentByHand)
+            return true
+        } catch {
+            reportWriteFailure(error)
+            return false
+        }
+    }
+
     /// Write a "- <marker> text" line to the active notes file, returning the file URL
     /// and the byte offset *before* the write (for undo). Throws on any failure.
     /// Banner-free: callers decide the visual feedback (rising-fade, undo offer,

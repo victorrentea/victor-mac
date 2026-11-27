@@ -19,4 +19,8 @@ final class PasteNoticeTests: XCTestCase {
     func testCopiedPillIsMarked() {
         XCTAssertTrue(PasteNotice.text(sender: "A", text: "x", copied: true).hasPrefix("✅ A: x"))
     }
+
+    func testCopyPlusSendLabel() {
+        XCTAssertEqual(BannerAction.copySend.title, "Copy + Send")
+    }
 }

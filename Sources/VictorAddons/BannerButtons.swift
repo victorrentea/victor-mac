@@ -18,6 +18,9 @@ enum BannerAction: String, CaseIterable {
     case dismiss = "Dismiss"
     /// 📋 A participant's paste: puts its text on the clipboard.
     case copy = "Copy"
+    /// 📋 A participant's paste, not yet in the notes: copies it AND appends it
+    /// to the session notes file (2026-11-27).
+    case copySend = "Copy + Send"
     case snooze = "Snooze"
     case snoozeHour = "Snooze 1h"
     /// The on-battery recording pill: stops the battery recording until the charger is back.
@@ -36,7 +39,7 @@ enum BannerAction: String, CaseIterable {
     var glyph: Glyph? {
         switch self {
         case .discard: return .emoji("🗑️")
-        case .send: return .symbol("paperplane.fill")
+        case .send, .copySend: return .symbol("paperplane.fill")
         case .snoozeHour: return .emoji("⏱️")
         case .copy: return .symbol("doc.on.doc")
         case .stopUntilAC: return .emoji("❌")

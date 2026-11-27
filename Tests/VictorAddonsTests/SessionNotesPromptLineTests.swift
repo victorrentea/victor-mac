@@ -93,4 +93,19 @@ final class SessionNotesPromptLineTests: XCTestCase {
             XCTAssertEqual(error as? SessionNotesAppender.NotesError, .noSession)
         }
     }
+
+    /// The paste pill's Copy + Send: a 📋 line (not a 🤖 prompt), trimmed, and
+    /// reported as written so the pill retires its Send.
+    func testPastePillSendWritesAHandSentLineNotAPrompt() throws {
+        XCTAssertTrue(SessionNotesAppender.sendByHand("  AI Agents prefer mono repos?\n"))
+        let line = try XCTUnwrap(lines().first)
+        XCTAssertEqual(line, "- 📋 AI Agents prefer mono repos?")
+        XCTAssertNil(parsedPrompt(line))
+    }
+
+    func testPastePillSendWithoutSessionReportsNotWritten() throws {
+        ScreenshotManager.sessionFolder = nil
+        XCTAssertFalse(SessionNotesAppender.sendByHand("x"))
+        XCTAssertEqual(try String(contentsOf: notes, encoding: .utf8), "")
+    }
 }
