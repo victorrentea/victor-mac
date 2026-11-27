@@ -355,6 +355,13 @@ final class BottomLeftBanner {
     /// dismiss the banner. Because the countdown pauses whenever the cursor is
     /// inside the pill, this fires after `duration` seconds of *un-hovered*
     /// time, not wall-clock. Only meaningful while a countdown is running.
+    /// When set, a RIGHT-click takes this exit instead of `onHoverCountdownExpired`
+    /// — for a pill whose un-touched outcome is the *positive* one (📄
+    /// `OpenedFileOffer`: left alone it sends), where right-click must still refuse.
+    var onRightClick: (() -> Void)?
+    /// When set, being pushed out of the stack (`evictFromStack`) calls this
+    /// instead of `onHoverCountdownExpired`: a pill that must not decide early.
+    var onEvicted: (() -> Void)?
     var onHoverCountdownExpired: (() -> Void)?
 
     private static let countdownTick: TimeInterval = 0.05
@@ -1041,7 +1048,7 @@ final class BottomLeftBanner {
         evicting = true
         defer { evicting = false }
         overlayInfo("🥞 bottom-left: a third pill arrived — '\(panels.first?.label.stringValue.prefix(40) ?? "")' rises out")
-        if countdownTimer != nil, let expired = onHoverCountdownExpired {
+        if countdownTimer != nil, let expired = onEvicted ?? onHoverCountdownExpired {
             countdownTimer?.invalidate(); countdownTimer = nil
             if hasButtons { hoverFired = true }
             expired()
@@ -1160,7 +1167,7 @@ final class BottomLeftBanner {
         guard hoverable, !hoverFired else { return }
         cancelHoverDwell(resetNudge: false)
         clearHoverCountdown()
-        onHoverCountdownExpired?()
+        (onRightClick ?? onHoverCountdownExpired)?()
     }
 
     private func fireHover() {

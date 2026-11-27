@@ -1,25 +1,13 @@
 import Foundation
 
-/// Remembers which files have already flashed in the bottom-left banner, so the
-/// *same* file opening again stays silent.
+/// The identity of an opened file — canonical repo + repo-relative path, the
+/// pair the daemon upserts on — and how long a verdict about it lasts.
 ///
-/// ## Who deduplicates what
-///
-/// Three layers see the same event, and they are **not** interchangeable:
-///
-/// 1. **The editors** (`live-coding`'s `OpenFileReporter.kt`, `victor-vsc`'s
-///    `open-file-reporter.js`) drop a file only when it repeats *consecutively*
-///    — `url|file` against the last POST. That is a flood guard for a ⌘P walked
-///    through ten files, nothing more.
-/// 2. **This log** gates the banner only.
-/// 3. **The daemon** (`training-assistant`'s `files_md._record_into_folder`)
-///    upserts by *(canonical repo URL, repo-relative path)*, so its list never
-///    grows a duplicate row either. But a repeat still carries information
-///    there: it refreshes the timestamp, follows a branch switch, and retries a
-///    link that came back `rate-limited` / `unknown` / `not-pushed` earlier.
-///
-/// Which is why the WebSocket push in `AppDelegate` is **never** gated on this
-/// log: silencing the banner must not cost the daemon an event.
+/// Since 2026-11-27 the banner and the push are both decided by
+/// `OpenedFileOffer` (ask the daemon, then an auto-send pill); it keys its
+/// verdicts on `identity(url:file:)` and expires them after `repeatAfter`.
+/// `decide`/`shouldAnnounce` are the earlier flash-once log, kept for their
+/// tests of the identity rules.
 ///
 /// ## One identity for a duplicate
 ///
@@ -28,10 +16,6 @@ import Foundation
 /// `pom.xml` — or `README.md`, or `src/main/java/App.java` — is a different file
 /// in every repo opened during a workshop, and a path-only key would mute all
 /// but the first of them.
-///
-/// Persisted in `UserDefaults` (a plist on disk) so an app restart — routine
-/// here, `build-app.sh` restarts it several times a day — doesn't hand back
-/// every announcement that was already made this morning.
 enum OpenedFileBannerLog {
     /// How long a file stays "already announced". Longer than a training day,
     /// so a file opened at 9:00 never flashes again at 16:00; short enough that

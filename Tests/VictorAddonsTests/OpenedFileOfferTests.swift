@@ -36,6 +36,20 @@ final class OpenedFileOfferTests: XCTestCase {
         XCTAssertEqual(pushed, [])
     }
 
+    func testVerdictsAreKeptPerSession() {
+        var session = "/s/monday-\(UUID().uuidString)"
+        var asked = 0, pushed = 0
+        let offer = OpenedFileOffer(ask: { _, _, _ in asked += 1 }, push: { _, _, _ in pushed += 1 },
+                                    screens: { [] }, session: { session })
+        let url = "https://github.com/o/r", file = "a.py"
+        OpenedFileOffer.store(.dismissed, for: session + "|" + OpenedFileBannerLog.identity(url: url, file: file)!)
+        offer.fileOpened(url: url, branch: "main", file: file, sessionActive: true, icon: nil)
+        XCTAssertEqual(asked + pushed, 0, "dismissed this session: silent")
+        session = "/s/tuesday-\(UUID().uuidString)"
+        offer.fileOpened(url: url, branch: "main", file: file, sessionActive: true, icon: nil)
+        XCTAssertEqual(asked, 1, "a new session asks again")
+    }
+
     func testVerdictsExpireWithTheBannerLog() {
         let key = "test|\(UUID().uuidString)"
         let then = Date(timeIntervalSinceNow: -OpenedFileBannerLog.repeatAfter - 10)
