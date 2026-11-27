@@ -540,8 +540,12 @@ final class ClipboardHistoryOverlay {
     /// - **No wash.** The bezel dims the screen to pull the eye to its middle;
     ///   the bubble is already where the eye is, and the line being typed into
     ///   is the context it is read against.
-    /// - **Images** keep their ⬇️ Downloads / 👁 Preview buttons, on the
-    ///   bubble's bottom row, right of the counter.
+    /// - **The clip touches the tail; the gray `n / N · age` row is on the far
+    ///   side** — above the text when the bubble is above the caret, below it
+    ///   when the bubble went below (2026-11-27, Victor), so the text sits as
+    ///   close as it can to where it will be pasted.
+    /// - **Images** keep their ⬇️ Downloads / 👁 Preview buttons, on that same
+    ///   row, right of the counter.
     private func renderBubble(_ entry: ClipboardEntry, at caret: CaretContext) {
         let caretPoint = CGPoint(x: caret.rect.minX, y: caret.rect.midY)
         let screen = NSScreen.physical.first { $0.frame.contains(caretPoint) } ?? screenUnderCursor()
@@ -559,10 +563,11 @@ final class ClipboardHistoryOverlay {
             ? imageView(for: entry, in: maxBox, screen: screen)
             : bubbleText(for: entry, font: caret.font(), color: colors.text, maxBox: maxBox)
 
-        // One small line under the clip: where you are, and when it was copied.
-        var facts = ["\(index + 1) / \(entries.count)",
+        // One small gray line: where you are, and when it was copied — nothing
+        // else (2026-11-27, Victor). It sits on the side *away* from the tail,
+        // so the clip itself is what touches the caret.
+        let facts = ["\(index + 1) / \(entries.count)",
                      ClipboardHistoryPolicy.age(Date().timeIntervalSince(entry.copiedAt))]
-        if case .text(let string) = entry.kind, textIsTruncated { facts.append("\(string.count) chars") }
         let status = fittedLabel(text: facts.joined(separator: "  ·  "),
                                  font: .monospacedDigitSystemFont(ofSize: 11, weight: .medium),
                                  color: colors.text.withAlphaComponent(0.55))
@@ -591,16 +596,20 @@ final class ClipboardHistoryOverlay {
         bubble.above = placement.above
         bubble.tailX = placement.tailX
         // Card area = the bubble minus its tail, on whichever side the tail is.
+        // The clip goes next to the tail (bottom of the card when the bubble is
+        // above the caret, top when below), the gray facts row on the far side.
         let cardBottom: CGFloat = placement.above ? tail : 0
         let cardTop = cardBottom + size.height - tail
-        body.setFrameOrigin(NSPoint(x: pad, y: cardTop - pad - body.frame.height))
-        status.setFrameOrigin(NSPoint(x: pad, y: cardBottom + pad + (footerHeight - status.frame.height) / 2))
+        let bodyY = placement.above ? cardBottom + pad : cardTop - pad - body.frame.height
+        let footerY = placement.above ? cardTop - pad - footerHeight : cardBottom + pad
+        body.setFrameOrigin(NSPoint(x: pad, y: bodyY))
+        status.setFrameOrigin(NSPoint(x: pad, y: footerY + (footerHeight - status.frame.height) / 2))
         bubble.addSubview(body)
         bubble.addSubview(status)
         var right = size.width - pad
         for button in buttons.reversed() {
             button.setFrameOrigin(NSPoint(x: right - button.frame.width,
-                                          y: cardBottom + pad + (footerHeight - button.frame.height) / 2))
+                                          y: footerY + (footerHeight - button.frame.height) / 2))
             right -= button.frame.width + buttonGap
             bubble.addSubview(button)
         }
