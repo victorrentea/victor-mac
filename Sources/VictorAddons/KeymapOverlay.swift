@@ -79,7 +79,7 @@ enum CommandControlShortcuts {
                          // lightning until it fills the screen, then sink again
                          // (2026-11-20, Victor's Gemini clip).
         23: "penguin",   // 5 — 🐧 a penguin chick waves a pink flag in the bottom-left
-                         // corner, half the screen height (2026-11-27, a sticker GIF).
+                         // corner, 35% of the screen height (2026-11-27, a sticker GIF).
         27: "inarius",   // - — 😇 a hooded angel comes down from the top edge and opens
                          // his wings of golden light, on a transparent background
                          // (2026-11-24, Victor's Gemini clip; every other ⌘⌃0 that afternoon).
