@@ -277,7 +277,7 @@ final class DjiUnplugWatch {
     }
 
     static func text(since: Date) -> String {
-        "🎤 DJI receiver off USB since \(MicDeadAlarm.hhmm(since)) — replug it"
+        "🎤 DJI receiver off USB since \(MicDeadAlarm.hhmm(since))"
     }
 
     static func shouldRaise(from previous: DjiSourceGate.State?, to state: DjiSourceGate.State) -> Bool {

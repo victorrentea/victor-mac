@@ -147,6 +147,22 @@ enum BrainEnergy {
         return "\(m) minute\(m == 1 ? "" : "s")"
     }
 
+    /// 📱 The `/ping` fragment that puts the battery on the tablet (2026-11-27,
+    /// Victor: *"nivelul bateriei … să fie arătat pe tabletă"*): seconds left,
+    /// **negative** once depleted (minus how long it has been empty), plus the
+    /// level. Absent whenever the menu bar shows no battery (`shown` false: idle,
+    /// hidden, unticked, a break on) — the tablet then hides its chip.
+    static func tabletField(_ state: State, shown: Bool) -> String {
+        guard shown else { return "" }
+        switch state {
+        case .idle: return ""
+        case let .draining(level, remaining):
+            return ",\"brainLeftS\":\(Int(remaining.rounded(.up))),\"brainPct\":\(Int((level * 100).rounded()))"
+        case let .depleted(overdue):
+            return ",\"brainLeftS\":\(-max(1, Int(overdue))),\"brainPct\":0"
+        }
+    }
+
     static func minutes(_ seconds: TimeInterval) -> String {
         let m = Int((seconds / 60).rounded(.up))
         if m < 60 { return "\(m)m" }
@@ -282,6 +298,17 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
     private var blinkTimer: Timer?
     private var blinkOn = true
     private(set) var state: BrainEnergy.State = .idle
+    /// 📱 `BrainEnergy.tabletField` as of the last `refresh()`; read off the main
+    /// thread by the tablet server's `/ping`, hence the lock.
+    private let pingLock = NSLock()
+    private var _pingField = ""
+    var pingField: String {
+        pingLock.lock(); defer { pingLock.unlock() }
+        return _pingField
+    }
+    private func setPingField(_ field: String) {
+        pingLock.lock(); _pingField = field; pingLock.unlock()
+    }
     /// The Extras tick (🧠 Show Brain Battery).
     private var enabled = false
     /// ☕ `UntilBreakCountdown` borrows this slot while it counts: the time to
@@ -376,6 +403,7 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
             blinkTimer?.invalidate(); blinkTimer = nil
             NSStatusBar.system.removeStatusItem(item)
             statusItem = nil
+            setPingField("")
         }
         refresh()
     }
@@ -410,10 +438,10 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         }
         summary = BrainEnergy.lines(state, reference: reference, now: now)
         for (row, line) in zip(statusRows, summary) { row.title = line }
-        statusItem?.isVisible = countdownTitle != nil
-            || (enabled && breakActive)
-            || (enabled && BrainEnergy.isShown(state, reference: reference,
-                                               hiddenAt: BrainBatterySettings.hiddenAt))
+        let batteryShown = enabled && !breakActive
+            && BrainEnergy.isShown(state, reference: reference, hiddenAt: BrainBatterySettings.hiddenAt)
+        statusItem?.isVisible = countdownTitle != nil || (enabled && breakActive) || batteryShown
+        setPingField(BrainEnergy.tabletField(state, shown: batteryShown))
         draw()
     }
 

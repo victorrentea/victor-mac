@@ -162,4 +162,23 @@ final class BrainEnergyTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - 📱 The tablet's /ping fragment (2026-11-27)
+
+    func testTabletFieldCarriesSecondsLeftAndLevel() {
+        XCTAssertEqual(BrainEnergy.tabletField(.draining(level: 0.4, remaining: 599.2), shown: true),
+                       ",\"brainLeftS\":600,\"brainPct\":40")
+    }
+
+    func testTabletFieldGoesNegativeOnceDepleted() {
+        XCTAssertEqual(BrainEnergy.tabletField(.depleted(overdue: 600), shown: true),
+                       ",\"brainLeftS\":-600,\"brainPct\":0")
+        XCTAssertEqual(BrainEnergy.tabletField(.depleted(overdue: 0), shown: true),
+                       ",\"brainLeftS\":-1,\"brainPct\":0", "dead at once, never a 0 that reads as alive")
+    }
+
+    func testTabletFieldIsAbsentWhenTheMenuBarShowsNoBattery() {
+        XCTAssertEqual(BrainEnergy.tabletField(.draining(level: 0.4, remaining: 600), shown: false), "")
+        XCTAssertEqual(BrainEnergy.tabletField(.idle, shown: true), "")
+    }
 }

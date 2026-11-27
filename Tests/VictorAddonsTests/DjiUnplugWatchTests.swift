@@ -44,8 +44,9 @@ final class DjiUnplugWatchTests: XCTestCase {
         XCTAssertEqual(resumed, 1)
     }
 
-    func testTextSaysWhenAndWhatToDo() {
+    func testTextSaysWhatAndSince() {
         let t = DjiUnplugWatch.text(since: Date())
-        XCTAssertTrue(t.contains("off USB") && t.contains("replug"))
+        XCTAssertTrue(t.contains("off USB"))
+        XCTAssertFalse(t.contains("replug"), "just the news, no order (2026-11-27)")
     }
 }

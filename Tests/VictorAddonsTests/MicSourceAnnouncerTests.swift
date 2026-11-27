@@ -6,12 +6,12 @@ import XCTest
 final class MicSourceAnnouncerTests: XCTestCase {
 
     func testTheCopyIsTheRosterGlyphAndLabel() {
-        XCTAssertEqual(MicSourceAnnouncer.cardText(glyph: "🎤"), "Listening 🎤")
-        XCTAssertEqual(MicSourceAnnouncer.cardText(glyph: "💻"), "Listening 💻")
+        XCTAssertEqual(MicSourceAnnouncer.cardText(glyph: "🎤"), "🎤 connected")
+        XCTAssertEqual(MicSourceAnnouncer.cardText(glyph: "💻"), "💻 connected")
     }
 
     func testAnUnknownGlyphIsShownAsTheRawName() {
-        XCTAssertEqual(MicSourceAnnouncer.cardText(glyph: "Loopback Audio"), "Listening 🎙️ Loopback Audio")
+        XCTAssertEqual(MicSourceAnnouncer.cardText(glyph: "Loopback Audio"), "🎙️ Loopback Audio connected")
     }
 
     func testTheBaselineIsSilentAndAChangeIsAnnouncedOnce() {
@@ -23,7 +23,7 @@ final class MicSourceAnnouncerTests: XCTestCase {
         let done = expectation(description: "settle")
         DispatchQueue.main.asyncAfter(deadline: .now() + MicSourceAnnouncer.settle + 0.3) { done.fulfill() }
         wait(for: [done], timeout: 3)
-        XCTAssertEqual(shown, ["Listening 💻"])
+        XCTAssertEqual(shown, ["💻 connected"])
     }
 
     func testABurstThatEndsWhereItBeganSaysNothing() {

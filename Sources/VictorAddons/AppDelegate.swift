@@ -41,7 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var outputRouter: OutputRouter?
     /// 🔊 Connects every JBL box that is on, so the second one is a spare.
     private var speakerReconnect: SpeakerReconnect?
-    /// 🎙️ "Listening 🎤" pill when the mic Whisper records through changes.
+    /// 🎙️ "🎤 connected" pill when the mic Whisper records through changes.
     private var micSourceAnnouncer: MicSourceAnnouncer?
     /// 🎤 red sticky tab when the DJI receiver delivers only zeros (dead TX).
     private let micDeadAlarm = MicDeadAlarm()
@@ -694,7 +694,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             // 🔔 The tablet rings when the break runs out while this Mac is
             // locked — Victor walked out; unlocked means he is at the laptop.
             let bell = BreakTimerModel.tabletBellField(secondsLeft: self?.breakTimer.tabletBellSecondsLeft)
-            return ",\"macTimeMs\":\(macMs),\"macTz\":\"\(macTz)\",\"macLanIps\":[\(macLanIps)]\(phone)\(locked)\(ending)\(power)\(voice)\(bell)"
+            // 🧠 The room's battery, for the tablet's chip: ⚠️ in the last 10 min, ☠️ once dead.
+            let brain = self?.brainBattery?.pingField ?? ""
+            return ",\"macTimeMs\":\(macMs),\"macTz\":\"\(macTz)\",\"macLanIps\":[\(macLanIps)]\(phone)\(locked)\(ending)\(power)\(voice)\(bell)\(brain)"
         }
         tabletServer?.onVoiceRoute = { VoiceRoutes.handle($0) }
         tabletServer?.onPromptCapture = { [weak self] rawPrompt, source, cwd in
