@@ -144,12 +144,14 @@ final class UntilBreakHoverTip {
         return p
     }
 
-    private static func fill(_ box: NSView, with stack: NSStackView) {
+    /// Side padding goes in the constraints: a vertical `NSStackView` with `.leading`
+    /// alignment ignores its right `edgeInsets` (measured: fitting width = text + left).
+    private static func fill(_ box: NSView, with stack: NSStackView, side: CGFloat) {
         stack.translatesAutoresizingMaskIntoConstraints = false
         box.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: side),
+            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -side),
             stack.topAnchor.constraint(equalTo: box.topAnchor),
             stack.bottomAnchor.constraint(equalTo: box.bottomAnchor),
         ])
@@ -174,8 +176,8 @@ final class UntilBreakHoverTip {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 3
-        stack.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 9, right: 12)
-        Self.fill(box, with: stack)
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 0, bottom: 9, right: 0)
+        Self.fill(box, with: stack, side: 13)
         p.contentView = box
         return p
     }
@@ -200,8 +202,8 @@ final class UntilBreakHoverTip {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: 14, left: 20, bottom: 16, right: 20)
-        Self.fill(box, with: stack)
+        stack.edgeInsets = NSEdgeInsets(top: 14, left: 0, bottom: 16, right: 0)
+        Self.fill(box, with: stack, side: 20)
         p.contentView = box
         return p
     }
