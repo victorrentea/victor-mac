@@ -22,9 +22,10 @@ and re-attached on every open. **The two 🔬 Fact-check rows are gone since 202
 
 - **☠️ Kill port** — submenu with recent ports + custom port dialog
 - **The training-assistant row has three states** (`refreshWsItem`): session started →
-  `🟢 Display Interact Link ⧈`; daemon up but **no session started** → `⚪ No session started ↗`,
+  `🟢 Display Interact Link ⧈`; daemon up but **no session started** → `🟡 No session started ↗`,
   which opens the host landing page `http://127.0.0.1:1234/host` to start one (2026-11-20; was a
-  dead `🟢 WS connected` row); daemon down → `🔴 Start training assistant` (runs `start.sh`).
+  dead `🟢 WS connected` row); daemon down → `🟥 Start training assistant` (runs `start.sh`). **The V's corner badge wears the
+  same three colours** 🟢/🟡/🟥 (2026-11-27; before, it was 🟢 for both of the first two).
 - **Renamed on 2026-09-22** (Victor's menu pass): `🟢 Interact Link` → `🟢 Display Interact Link ⧈`,
   `🔳 Display clipboard link` → `🔗 Display clipboard link ⧈` (⧈ = *this shows a QR*),
   `Send Clipboard to Notes / as Prompt` → `Clipboard ↗ Notes / Prompts`, `🤖 Prompts…` →

@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 26, 17:46"
+    static let BUILD_TIME = "Nov 27, 00:52"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -1406,15 +1406,16 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             wsStatusItem.action = #selector(displayJoinLinkAction)
             wsStatusItem.target = self
         } else if wsConnected {
-            // ⚪ The daemon is up but no session is started (2026-11-20, Victor):
+            // 🟡 The daemon is up but no session is started (2026-11-20, Victor):
             // the row used to say "WS connected" and do nothing; now it says what
             // is missing and opens the host's landing page, where one is started.
-            wsStatusItem.title = "⚪ No session started ↗"
+            // Yellow, not ⚪, since 2026-11-27 — the same colour as the V's badge.
+            wsStatusItem.title = "🟡 No session started ↗"
             wsStatusItem.isEnabled = true
             wsStatusItem.action = #selector(openHostLandingAction)
             wsStatusItem.target = self
         } else {
-            wsStatusItem.title = "🔴 Start training assistant"
+            wsStatusItem.title = "🟥 Start training assistant"
             wsStatusItem.isEnabled = true
             wsStatusItem.action = #selector(startTrainingAssistantAction)
             wsStatusItem.target = self
@@ -1497,12 +1498,14 @@ class MenuBarManager: NSObject, NSMenuDelegate {
 
     private func refreshMenuIcon() {
         guard let button = statusItem.button else { return }
-        let badge = (wsConnected || sessionActive) ? "🟢" : "🟥"
+        // 🟢 session started · 🟡 daemon up, no session · 🟥 daemon down — the same
+        // three colours as the training-assistant row in the menu (2026-11-27, Victor).
+        let badge = sessionActive ? "🟢" : wsConnected ? "🟡" : "🟥"
 
         // **The V is the app; the microphone has its own item** (2026-11-19,
         // Victor: the menu icon becomes the V-in-a-circle logo, and *"another menu
         // bar item which represents the microphone which is currently selected, to
-        // be constantly displayed"*). The 🟢/🟥 training-assistant badge and the
+        // be constantly displayed"*). The 🟢/🟡/🟥 training-assistant badge and the
         // 🟥 memory plate stay on the V; everything about the microphone — which
         // one, and whether Whisper hears it — moved to `micStatusItem`.
         button.image = platedForMemoryPressure(makeLogoIcon(badge: badge))
