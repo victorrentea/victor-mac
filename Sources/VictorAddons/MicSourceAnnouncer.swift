@@ -1,7 +1,7 @@
 import Cocoa
 import CoreAudio
 
-/// **"🎤 connected"** on the standard bottom-left status
+/// **"mic:🎤"** on the standard bottom-left status
 /// pill (`StatusBanner`) when the microphone **this app's Whisper records
 /// through** changes — plus the listener that runs `HeadphoneMicGuard`.
 ///
@@ -67,14 +67,15 @@ final class MicSourceAnnouncer {
         show(text)
     }
 
-    /// The exact copy — just the source's glyph, no label: `🎤 connected`
-    /// (2026-11-27, Victor: *"în loc de Listening+<icon> zi <icon> connected"*;
-    /// before that `Listening 🎤`, 2026-09-26). Pure, so the wording is testable. A
+    /// The exact copy — `mic:` and the source's glyph: `mic:🎤` (2026-11-27 evening,
+    /// Victor: *"show "mic:🎙️" in the overlay"*; `🎤 connected` from the same
+    /// afternoon, *"în loc de Listening+<icon> zi <icon> connected"*; before that
+    /// `Listening 🎤`, 2026-09-26). Pure, so the wording is testable. A
     /// glyph `MicRoster` does not know is Python's fallback — the raw device
     /// name, which is then the only thing that says which device it is.
     static func cardText(glyph: String) -> String {
-        if let mic = MicRoster.byGlyph(glyph) { return "\(mic.glyph) connected" }
-        return "🎙️ \(glyph.nonBlank(or: "unknown input")) connected"
+        if let mic = MicRoster.byGlyph(glyph) { return "mic:\(mic.glyph)" }
+        return "mic:🎙️ \(glyph.nonBlank(or: "unknown input"))"
     }
 
     // MARK: - The system default input, for HeadphoneMicGuard only
