@@ -356,6 +356,9 @@ final class ShareZoom: NSObject, SCStreamOutput, SCStreamDelegate {
 
     /// The drawn cursor's last published position (global Cocoa points) and when.
     private var publishedCursor: CGPoint?
+    /// The glass's desktop slice last published with it (`vx vy vw vh`, global Cocoa
+    /// points): a zoom changing under a still pointer is published too.
+    private var publishedView: CGRect?
     private var publishedAt: CFAbsoluteTime = 0
 
     private var framesShown = 0
@@ -928,7 +931,12 @@ final class ShareZoom: NSObject, SCStreamOutput, SCStreamDelegate {
         var cursorFrame: CGRect?
         if inside {
             let drawnAt = ShareZoomPolicy.cursorPoint(pointer: p, origin: origin, factor: current)
-            publishCursor(CGPoint(x: s.frame.minX + drawnAt.x, y: s.frame.minY + drawnAt.y))
+            // The slice of the desktop on the glass, global Cocoa points: a capture of
+            // the screen is of the glass, so a box drawn in desktop points has to be
+            // carried onto it (Walkie Talkie's wheel-drag crop, 2026-11-27).
+            let view = CGRect(x: s.frame.minX + origin.x, y: s.frame.minY + origin.y,
+                              width: size.width / k, height: size.height / k)
+            publishCursor(CGPoint(x: s.frame.minX + drawnAt.x, y: s.frame.minY + drawnAt.y), view: view)
             s.fillDoor(ShareZoomEdge.door(near: drawnAt, doors: s.doors, display: bounds,
                                                depth: Stage.doorDepth, reach: Stage.doorReach))
         } else {
@@ -1003,20 +1011,28 @@ final class ShareZoom: NSObject, SCStreamOutput, SCStreamDelegate {
     /// and an empty one when the zoom ends or the pointer leaves the zoomed display.
     static let cursorNotification = Notification.Name("ro.victorrentea.share-zoom.cursor")
 
-    private func publishCursor(_ point: CGPoint?) {
+    private func publishCursor(_ point: CGPoint?, view: CGRect? = nil) {
         let now = CFAbsoluteTimeGetCurrent()
         if let point {
             let moved = publishedCursor.map { hypot($0.x - point.x, $0.y - point.y) > 0.5 } ?? true
+                || publishedView != view
             let due = now - publishedAt >= (moved ? 1.0 / 30 : 0.5)
             guard due else { return }
             publishedCursor = point
+            publishedView = view
             publishedAt = now
+            var info: [String: Double] = ["x": Double(point.x), "y": Double(point.y)]
+            if let view {
+                info["vx"] = Double(view.minX); info["vy"] = Double(view.minY)
+                info["vw"] = Double(view.width); info["vh"] = Double(view.height)
+            }
             DistributedNotificationCenter.default().postNotificationName(
                 Self.cursorNotification, object: nil,
-                userInfo: ["x": Double(point.x), "y": Double(point.y)], deliverImmediately: true)
+                userInfo: info, deliverImmediately: true)
         } else {
             guard publishedCursor != nil else { return }
             publishedCursor = nil
+            publishedView = nil
             publishedAt = now
             DistributedNotificationCenter.default().postNotificationName(
                 Self.cursorNotification, object: nil, userInfo: nil, deliverImmediately: true)
