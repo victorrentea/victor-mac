@@ -3,7 +3,7 @@ import Foundation
 import UserNotifications
 
 class MenuBarManager: NSObject, NSMenuDelegate {
-    static let BUILD_TIME = "Nov 27, 15:01"
+    static let BUILD_TIME = "Nov 27, 19:22"
 
     struct TranscriptionDebugState {
         let isTranscribing: Bool
@@ -1466,7 +1466,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             ("🟠 Recording audio", .listen,
              "No Whisper: the mic is recorded to disk once voices are heard (the last 10 min are kept), "
              + "and transcribed when 🟢 Transcribing runs again. Unplugging the charger comes here."),
-            ("🟥 Stopped", .off,
+            ("🟥 Not listening", .off,
              "Nothing listens, nothing is recorded — for the plane whose noise would keep waking the recorder."),
         ]
 

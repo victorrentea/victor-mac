@@ -276,7 +276,7 @@ final class MicOverlayTests: XCTestCase {
     /// ticked; 🟠 covers listening as well as recording (2026-11-25).
     func testTheMenuRowsAndTheirTicks() {
         typealias M = MenuBarManager.TranscriptionMenu
-        XCTAssertEqual(M.rows.map(\.title), ["🟢 Transcribing", "🟠 Recording audio", "🟥 Stopped"])
+        XCTAssertEqual(M.rows.map(\.title), ["🟢 Transcribing", "🟠 Recording audio", "🟥 Not listening"])
         XCTAssertEqual(M.ticked(.transcribing), .transcribe)
         XCTAssertEqual(M.ticked(.listening), .listen)
         XCTAssertEqual(M.ticked(.recording), .listen)
