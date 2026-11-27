@@ -2416,8 +2416,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             // (`OpenedFileBannerLog`). The daemon still gets every push.
             if self?.isSessionActive == true,
                OpenedFileBannerLog.shouldAnnounce(url: url, file: file) {
-                self?.statusBanner?.showOnPresence(text: "📄 " + (file as NSString).lastPathComponent,
-                                                   sound: nil, visibleDuration: 3.0)
+                // The sender's logo instead of 📄 (`EditorLogo`): it is the app in front.
+                let logo = EditorLogo.frontmostEditorIcon()
+                self?.statusBanner?.showOnPresence(text: EditorLogo.bannerText(file: file, hasLogo: logo != nil),
+                                                   sound: nil, visibleDuration: 3.0, icon: logo)
             }
             return "{\"ok\":true}"
         }

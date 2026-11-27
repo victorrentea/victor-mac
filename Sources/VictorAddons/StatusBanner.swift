@@ -22,6 +22,7 @@ final class StatusBanner {
     private var pendingText: String?
     private var pendingSound: NSSound?
     private var pendingVisibleDuration: TimeInterval = 5.0
+    private var pendingIcon: NSImage?
 
     init(screensProvider: @escaping () -> [NSScreen]) {
         banner = BottomLeftBanner(screensProvider: screensProvider, hoverable: false)
@@ -30,13 +31,23 @@ final class StatusBanner {
     /// Schedule a banner to fade in on the next sign of life from the laptop —
     /// a keystroke counts, not only a mouse move. Plays `sound` when it appears.
     /// Stays visible `visibleDuration`, then fades out. Latest-wins.
-    func showOnPresence(text: String, sound: NSSound?, visibleDuration: TimeInterval = 5.0) {
+    /// `icon` rides in front of the words, as in `showNow`; nil clears one a
+    /// previous banner left on the shared pill.
+    func showOnPresence(text: String, sound: NSSound?, visibleDuration: TimeInterval = 5.0,
+                        icon: NSImage? = nil) {
         pendingText = text
         pendingSound = sound
         pendingVisibleDuration = visibleDuration
+        pendingIcon = icon
 
         if banner.isVisible {
-            banner.updateText(text)
+            // A different icon changes the pill's width: rebuild, not just retext.
+            if banner.icon !== icon {
+                banner.icon = icon
+                banner.show(text: text)
+            } else {
+                banner.updateText(text)
+            }
             sound?.play()
             scheduleFadeOut(after: visibleDuration)
             startHoverKeepAlive()
@@ -112,6 +123,7 @@ final class StatusBanner {
 
     private func revealBanner() {
         guard let text = pendingText else { return }
+        banner.icon = pendingIcon
         banner.show(text: text)
         pendingSound?.play()
         scheduleFadeOut(after: pendingVisibleDuration)
