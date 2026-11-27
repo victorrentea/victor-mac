@@ -1345,6 +1345,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         tabletServer?.onTestBreakStart = { [weak self] minutes in
             DispatchQueue.main.async { self?.startBreak(minutes: minutes) }
         }
+        tabletServer?.onTestBreakUntilCancel = { [weak self] in self?.untilBreak.cancel() }
+        tabletServer?.onTestBreakUntilTip = { [weak self] in
+            self?.brainBattery?.showCountdownTipForTest() ?? false
+        }
         tabletServer?.onTestBreakUntil = { [weak self] in
             // What a first floating-☕ pop does: the menu-bar countdown.
             DispatchQueue.main.async { self?.untilBreak.start() }
@@ -2870,6 +2874,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 guard let self, self.untilBreak.isRunning else { return nil }
                 return self.brainBattery?.slotCenterGlobal
             },
+            burstOnArrival: true,
             onArrival: { [weak self] in
                 guard let self, self.untilBreak.isRunning else { return }
                 let outcome = self.untilBreak.coffeeMinute

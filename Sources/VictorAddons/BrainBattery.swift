@@ -294,6 +294,8 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
     /// depleted, o să apară o cafea"*). Just the cup, no time: `☕ 9:42` is the
     /// countdown TO the break, and the two must not be confused.
     private var breakActive = false
+    /// ☕ The big hover card while the countdown owns the slot.
+    private lazy var hoverTip = UntilBreakHoverTip(button: { [weak self] in self?.statusItem?.button })
 
     init(breakEndedAt: @escaping () -> Date?) {
         self.breakEndedAt = breakEndedAt
@@ -330,6 +332,7 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         let modeChanged = (title == nil) != (countdownTitle == nil)
         countdownTitle = title
         countdownMenu = menu
+        if title == nil { hoverTip.update(remaining: nil) }   // the item may go away before a draw()
         if modeChanged { syncItem() } else { draw() }
     }
 
@@ -340,10 +343,24 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         refresh()
     }
 
+    /// `GET /test/break/until/tip`: the hover card for 4 s with nobody's hand on
+    /// the mouse, under the slot's own window (the main display, not the projector).
+    func showCountdownTipForTest() -> Bool {
+        guard countdownTitle != nil else { return false }
+        return hoverTip.pin(seconds: 4)
+    }
+
     /// Where the slot is on screen (global coordinates), for the ☕ −1 to fly at.
+    ///
+    /// On the **retina's** menu bar, not wherever the item's window lives: the
+    /// window sits on one display's menu bar (whichever macOS picked), every
+    /// other menu bar draws a copy, and the −1's canvas — like the room's
+    /// projector — is the retina only, so a slot homed on the ASUS would have
+    /// the −1 fly off its own panel.
     var slotCenterGlobal: CGPoint? {
         guard let item = statusItem, item.isVisible, let w = item.button?.window else { return nil }
-        return CGPoint(x: w.frame.midX, y: w.frame.midY)
+        let r = MenuBarSlot.rect(of: w.frame, on: AppDelegate.findRetinaScreen())
+        return CGPoint(x: r.midX, y: r.midY)
     }
 
     private func syncItem() {
@@ -405,10 +422,14 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
         if let countdownTitle {
             item.button?.image = nil
             item.button?.attributedTitle = countdownTitle
-            item.button?.toolTip = "Time until the break the room voted ☕ — each ☕ takes a minute off"
+            // The big card (`UntilBreakHoverTip`) replaces the native tooltip:
+            // both at once would stack a small grey one over it.
+            item.button?.toolTip = nil
             item.menu = countdownMenu
+            hoverTip.update(remaining: countdownTitle.string.replacingOccurrences(of: "☕ ", with: ""))
             return
         }
+        hoverTip.update(remaining: nil)
         item.menu = menu
         if breakActive {
             item.button?.image = nil

@@ -25,6 +25,8 @@ final class MinuteToken {
     private var inFlight = 0
     /// −1s on their way to the watch, not yet landed or fizzled.
     var minutesInFlight: Int { inFlight }
+    /// Landing explosions still drawing; they keep the panel up.
+    private var bursting = 0
 
     /// Fling a **−1** from `point` (global coordinates) to the break timer and,
     /// when it lands, call `onArrival` — which is what actually takes the minute
@@ -35,8 +37,14 @@ final class MinuteToken {
     /// converging on the watch. If the timer is closed mid-flight the token just
     /// fades out and `onArrival` never fires — there is nothing left to subtract
     /// from. Main thread only.
+    ///
+    /// `burstOnArrival`: the token ends in a small explosion where it lands — the
+    /// menu-bar ☕ countdown, whose few pixels of text can't jolt like the watch
+    /// does (2026-11-27, Victor: *"when it reaches the menu bar icon it should
+    /// make like an explosion, and then the timer goes one minute lower"*).
     func fly(fromGlobal point: CGPoint,
              targetGlobal: @escaping () -> CGPoint?,
+             burstOnArrival: Bool = false,
              onArrival: @escaping () -> Void) {
         guard let hostLayer = hostLayer() else { return }
         let screen = AppDelegate.findRetinaScreen().frame
@@ -100,12 +108,101 @@ final class MinuteToken {
 
             if raw >= 1.0 {
                 tm.invalidate()
+                let host = token.superlayer
                 token.removeFromSuperlayer()
+                if burstOnArrival, let host, let self {
+                    // The panel must outlive the burst — but not as a minute in
+                    // flight, which `coffeePopWins` counts.
+                    self.bursting += 1
+                    Self.burst(at: target, in: host) { [weak self] in
+                        guard let self else { return }
+                        self.bursting -= 1
+                        self.takeDownIfIdle()
+                    }
+                }
                 self?.landed()
                 onArrival()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private static let burstSeconds: CFTimeInterval = 0.6
+
+    /// A flash, a shock ring and a spray of red/orange/yellow sparks out of
+    /// `center`, all gone in `burstSeconds`; `done` once the layers are removed.
+    /// Sparks fly mostly sideways and down — up is off the top of the screen.
+    private static func burst(at center: CGPoint, in host: CALayer, done: @escaping () -> Void) {
+        let group = CALayer()
+        group.frame = host.bounds
+        host.addSublayer(group)
+        CATransaction.begin()
+        CATransaction.setCompletionBlock {
+            group.removeFromSuperlayer()
+            done()
+        }
+        func fadeAndGrow(_ layer: CALayer, scale: CGFloat) {
+            let grow = CABasicAnimation(keyPath: "transform.scale")
+            grow.fromValue = 0.2; grow.toValue = scale
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1; fade.toValue = 0
+            let g = CAAnimationGroup()
+            g.animations = [grow, fade]
+            g.duration = burstSeconds
+            g.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            g.fillMode = .forwards; g.isRemovedOnCompletion = false
+            layer.add(g, forKey: "burst")
+        }
+        // White-hot core.
+        let flash = CALayer()
+        flash.bounds = CGRect(x: 0, y: 0, width: 46, height: 46)
+        flash.cornerRadius = 23
+        flash.position = center
+        flash.backgroundColor = NSColor(calibratedRed: 1, green: 0.95, blue: 0.7, alpha: 1).cgColor
+        flash.shadowColor = NSColor.systemOrange.cgColor
+        flash.shadowRadius = 14; flash.shadowOpacity = 1; flash.shadowOffset = .zero
+        group.addSublayer(flash)
+        fadeAndGrow(flash, scale: 1.6)
+        // Shock ring.
+        let ring = CALayer()
+        ring.bounds = CGRect(x: 0, y: 0, width: 60, height: 60)
+        ring.cornerRadius = 30
+        ring.position = center
+        ring.borderWidth = 4
+        ring.borderColor = NSColor.systemRed.cgColor
+        group.addSublayer(ring)
+        fadeAndGrow(ring, scale: 3.2)
+        // Sparks.
+        let colors: [NSColor] = [.systemRed, .systemOrange, .systemYellow]
+        let count = 18
+        for i in 0..<count {
+            // Lower half-circle plus a bit above the horizon (angles in AppKit's y-up space).
+            let angle = Double.pi * (1.1 + 0.8 * Double(i) / Double(count - 1))
+                + Double.random(in: -0.12...0.12)
+            let dist = CGFloat.random(in: 55...110)
+            let spark = CALayer()
+            let d = CGFloat.random(in: 6...10)
+            spark.bounds = CGRect(x: 0, y: 0, width: d, height: d)
+            spark.cornerRadius = d / 2
+            spark.backgroundColor = colors[i % colors.count].cgColor
+            spark.position = center
+            group.addSublayer(spark)
+            let move = CABasicAnimation(keyPath: "position")
+            move.fromValue = NSValue(point: center)
+            move.toValue = NSValue(point: CGPoint(x: center.x + CGFloat(cos(angle)) * dist,
+                                                  y: center.y + CGFloat(sin(angle)) * dist))
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1; fade.toValue = 0
+            let shrink = CABasicAnimation(keyPath: "transform.scale")
+            shrink.fromValue = 1; shrink.toValue = 0.3
+            let g = CAAnimationGroup()
+            g.animations = [move, fade, shrink]
+            g.duration = burstSeconds
+            g.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            g.fillMode = .forwards; g.isRemovedOnCompletion = false
+            spark.add(g, forKey: "burst")
+        }
+        CATransaction.commit()
     }
 
     /// The panel's layer, creating and showing the panel on first use.
@@ -121,7 +218,11 @@ final class MinuteToken {
 
     private func landed() {
         inFlight = max(0, inFlight - 1)
-        guard inFlight == 0 else { return }
+        takeDownIfIdle()
+    }
+
+    private func takeDownIfIdle() {
+        guard inFlight == 0, bursting == 0 else { return }
         panel?.orderOut(nil)
         panel = nil
     }

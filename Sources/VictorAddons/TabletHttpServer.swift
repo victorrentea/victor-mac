@@ -65,6 +65,8 @@ case testTerminalFont
         case testWisprRecording
         /// Start/reset the Break countdown overlay for N minutes (test hook).
         case testBreakStart(Int)
+        case testBreakUntilCancel  // ☕ the menu's "Cancel the countdown", headless
+        case testBreakUntilTip     // ☕ the big hover card under the menu-bar countdown, 4 s
         case testBreakUntil        // the ☕-click variant: half-size "UNTIL BREAK"
         /// Close the Break countdown overlay (test hook).
         case testBreakClose
@@ -342,6 +344,8 @@ case testTerminalFont
     var onTestWisprRecording: (() -> String)?
     var onTestBreakStart: ((Int) -> Void)?
     var onTestBreakUntil: (() -> Void)?
+    var onTestBreakUntilTip: (() -> Bool)?
+    var onTestBreakUntilCancel: (() -> Void)?
     var onTestBreakClose: (() -> Void)?
     var onTestBreakPicker: ((String?) -> Void)?
     var onTestBreakCountry: ((String?) -> Void)?
@@ -716,6 +720,10 @@ case testTerminalFont
                 self.onTestBreakStart?(minutes)
             case .testBreakUntil:
                 self.onTestBreakUntil?()
+            case .testBreakUntilCancel:
+                self.onTestBreakUntilCancel?()
+            case .testBreakUntilTip:
+                body = (self.onTestBreakUntilTip?() ?? false) ? "ok" : "no countdown running"
             case .testBreakClose:
                 self.onTestBreakClose?()
             case .testBreakPause:
@@ -1471,6 +1479,8 @@ case testTerminalFont
             if pathOnly.hasPrefix("/test/break/") {
                 let suffix = String(pathOnly.dropFirst("/test/break/".count))
                 if suffix == "until" { return .testBreakUntil }
+                if suffix == "until/tip" { return .testBreakUntilTip }
+                if suffix == "until/cancel" { return .testBreakUntilCancel }
                 if let minutes = Int(suffix) {
                     return .testBreakStart(minutes)
                 }
