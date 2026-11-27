@@ -40,6 +40,13 @@ final class DjiReceiverMonitor {
     private var gate = DjiSourceGate()         // reader thread only
     private var _gateState: DjiSourceGate.State?
     private var thread: Thread?
+    // Receiver auto power-off (reader thread only) — see `keepReceiverOn`.
+    private var autoOffSeen: Bool?
+    private var autoOffAttempts = 0
+    private var autoOffLastTry = Date.distantPast
+    private var autoOffSeq: UInt16 = 0x4b00
+    private var autoOffCrcRefused = false
+    static let autoOffMaxAttempts = 3
 
     func start() {
         guard thread == nil else { return }
@@ -156,6 +163,10 @@ final class DjiReceiverMonitor {
                     lastPush = Date()
                     gotStatus = true
                     handle(status, at: lastPush)
+                    keepReceiverOn(frame, intf: intf)
+                } else if frame.count == 14, autoOffAttempts > 0,
+                          frame[6] == UInt8(autoOffSeq & 0xff), frame[7] == UInt8(autoOffSeq >> 8) {
+                    overlayInfo("🎤 DJI receiver ACKed the auto-off command: \(frame.map { String(format: "%02x", $0) }.joined(separator: " "))")
                 } else if !loggedV1, DjiReceiverProtocol.isV1Heartbeat(frame) {
                     loggedV1 = true
                     lastPush = Date()
@@ -164,6 +175,49 @@ final class DjiReceiverMonitor {
                 }
             }
             if Date().timeIntervalSince(lastPush) > Self.staleAfter { return gotStatus }
+        }
+    }
+
+    /// **Turn the receiver's 15-minute auto power-off off** (2026-11-27,
+    /// Victor: *"try to keep alive the receiver throughout the breaks as
+    /// well"*). The TX goes off for a break, the receiver — with no
+    /// transmitter linked — shuts itself down 15 min later, and coming back
+    /// means powering both on by hand. It is a receiver setting (the same one
+    /// DJI Mimo shows), so once off it stays off; this only re-sends it when a
+    /// status push says it is on again (a reset, another phone's Mimo).
+    ///
+    /// Guarded three ways: sent only after a frame from this very receiver
+    /// passed both CRCs (proof the framing is the one it expects), at most
+    /// `autoOffMaxAttempts` times per app run, 10 s apart — the push after
+    /// a sent command is what tells whether it worked.
+    private func keepReceiverOn(_ frame: [UInt8], intf: IOUSBHostInterface) {
+        guard let on = DjiReceiverProtocol.receiverAutoOff(frame) else { return }
+        if on != autoOffSeen {
+            overlayInfo("🎤 DJI receiver auto power-off after 15 min: \(on ? "ON" : "off")"
+                        + (!on && autoOffAttempts > 0 ? " ✅ (our command took)" : ""))
+            autoOffSeen = on
+        }
+        guard on, autoOffAttempts < Self.autoOffMaxAttempts,
+              Date().timeIntervalSince(autoOffLastTry) > 10 else { return }
+        guard DjiReceiverProtocol.checksOut(frame) else {
+            if !autoOffCrcRefused {
+                autoOffCrcRefused = true
+                overlayError("🎤 DJI status frame fails our CRC check — not sending the auto-off command: \(frame.map { String(format: "%02x", $0) }.joined(separator: " "))")
+            }
+            return
+        }
+        autoOffAttempts += 1
+        autoOffLastTry = Date()
+        autoOffSeq &+= 1
+        let cmd = DjiReceiverProtocol.autoOffCommand(enabled: false, seq: autoOffSeq)
+        do {
+            let out = try intf.copyPipe(withAddress: 0x06)
+            let data = NSMutableData(bytes: cmd, length: cmd.count)
+            var sent = 0
+            try out.__sendIORequest(with: data, bytesTransferred: &sent, completionTimeout: 1.0)
+            overlayInfo("🎤 DJI receiver: sent auto-off = off (try \(autoOffAttempts)/\(Self.autoOffMaxAttempts), \(sent) bytes): \(cmd.map { String(format: "%02x", $0) }.joined(separator: " "))")
+        } catch {
+            overlayError("🎤 DJI receiver: could not send the auto-off command: \(error)")
         }
     }
 

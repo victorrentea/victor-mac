@@ -20,8 +20,10 @@ import Foundation
 ///   * from byte 52, one 32-byte slot per linked TX: `+0` = `0x02`,
 ///     `+1` = the physical unit, `+7` = flags: `0x02` docked/charging and
 ///     `(b >> 2) & 7` the battery gauge, 1 (full) … 7 (about to shut off).
-/// CRCs are not checked: a frame whose shape does not match is ignored, and a
-/// corrupt one that happens to match is corrected by the next, 100 ms later.
+/// CRCs are not checked on reading: a frame whose shape does not match is
+/// ignored, and a corrupt one that happens to match is corrected by the next,
+/// 100 ms later. They are computed for the one frame this app ever *sends* —
+/// turning the receiver's auto power-off off (`autoOffCommand`).
 enum DjiReceiverProtocol {
 
     struct Transmitter: Equatable {
@@ -80,6 +82,66 @@ enum DjiReceiverProtocol {
     /// Only for the log: v1 has no battery, and this app does not decode it.
     static func isV1Heartbeat(_ f: [UInt8]) -> Bool {
         [56, 70, 84].contains(f.count) && f[9] == 0x5b && f[10] == 0x03 && f[11] == 0x00
+    }
+
+    // MARK: - Receiver auto-off (2026-11-27)
+
+    /// Is the receiver's **auto power-off after 15 min** on? v2 status push,
+    /// byte 21, bit `0x01` (PROTOCOL.md: "Auto off (receiver) active") — the
+    /// only way to read it, there is no query. Nil for anything but a status push.
+    ///
+    /// Why it matters: on 2026-11-27 the TX went off for the lunch break at
+    /// 12:32 and the receiver shut itself down at 12:47, exactly 15 min later —
+    /// back from the break, Victor had to power the receiver on by hand too.
+    static func receiverAutoOff(_ f: [UInt8]) -> Bool? {
+        guard decodeStatus(f) != nil else { return nil }
+        return f[21] & 0x01 != 0
+    }
+
+    /// DJI's DUML header CRC-8 (reflected poly `0x31`, seed `0x77`) over
+    /// bytes 0…2. PROTOCOL.md gives the seed as `0xEE`, but that reproduces
+    /// none of its own examples; `0x77` reproduces all of them and every frame
+    /// in `DjiReceiverProtocolTests`.
+    static func crc8(_ bytes: ArraySlice<UInt8>) -> UInt8 {
+        var c: UInt8 = 0x77
+        for b in bytes {
+            c ^= b
+            for _ in 0..<8 { c = c & 1 != 0 ? (c >> 1) ^ 0x8C : c >> 1 }
+        }
+        return c
+    }
+
+    /// DUML CRC-16 (reflected poly `0x8408`, seed `0x3692`), appended
+    /// little-endian; checked against every captured frame in the tests.
+    static func crc16(_ bytes: ArraySlice<UInt8>) -> UInt16 {
+        var c: UInt16 = 0x3692
+        for b in bytes {
+            c ^= UInt16(b)
+            for _ in 0..<8 { c = c & 1 != 0 ? (c >> 1) ^ 0x8408 : c >> 1 }
+        }
+        return c
+    }
+
+    /// Both CRCs of a received frame are right — the proof, on the real
+    /// receiver, that `autoOffCommand` is framed the way it expects.
+    static func checksOut(_ f: [UInt8]) -> Bool {
+        guard f.count >= 6 else { return false }
+        let crc = crc16(f[0..<(f.count - 2)])
+        return crc8(f[0..<3]) == f[3]
+            && f[f.count - 2] == UInt8(crc & 0xff) && f[f.count - 1] == UInt8(crc >> 8)
+    }
+
+    /// v2 "set receiver setting" frame, command `0x0010` = auto off after
+    /// 15 min, target `0x0000` = the receiver (PROTOCOL.md's 22-byte layout):
+    /// `55 16 04 fc 02 5a seq·2 40 5b 01 02 00 00 00 00 10 00 01 <value> crc·2`.
+    static func autoOffCommand(enabled: Bool, seq: UInt16) -> [UInt8] {
+        var f: [UInt8] = [0x55, 22, 0x04, 0, 0x02, 0x5a, UInt8(seq & 0xff), UInt8(seq >> 8),
+                          0x40, 0x5b, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00,
+                          0x10, 0x00, 0x01, enabled ? 0x01 : 0x00]
+        f[3] = crc8(f[0..<3])
+        let crc = crc16(f[...])
+        f += [UInt8(crc & 0xff), UInt8(crc >> 8)]
+        return f
     }
 
     /// What the menu's `🎙️ Transcribing: 🎤 DJI` row appends, or nil for

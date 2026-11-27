@@ -132,3 +132,50 @@ final class DjiReceiverProtocolTests: XCTestCase {
         XCTAssertEqual(p.feed(status(0x00, []), now: t0 + 60), [])
     }
 }
+
+/// The one frame this app sends: auto power-off off (2026-11-27).
+final class DjiReceiverAutoOffTests: XCTestCase {
+    private func bytes(_ hex: String) -> [UInt8] { hex.split(separator: " ").map { UInt8($0, radix: 16)! } }
+
+    // Captured from the receiver on 2026-09-26 (see DjiReceiverProtocolTests).
+    lazy var oneTx = bytes("55 56 04 67 5a 02 00 00 00 5b 03 03 46 00 03 00 00 00 00 20 20 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 00 00 1e 00 00 00 02 02 00 00 00 1a 98 25 04 01 00 78 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 9f d9")
+    lazy var keepAlive = bytes("55 0e 04 66 5a 02 33 11 00 04 74 04 2d b8")
+    lazy var level = bytes("55 17 04 38 5a 02 00 00 00 5b 03 03 07 00 05 02 00 00 00 01 00 1b d7")
+
+    func testEveryCapturedFramePassesBothCrcs() {
+        XCTAssertTrue(DjiReceiverProtocol.checksOut(oneTx))
+        XCTAssertTrue(DjiReceiverProtocol.checksOut(keepAlive))
+        XCTAssertTrue(DjiReceiverProtocol.checksOut(level))
+    }
+
+    func testACorruptFrameFailsTheCrc() {
+        var f = oneTx
+        f[30] ^= 0x01
+        XCTAssertFalse(DjiReceiverProtocol.checksOut(f))
+    }
+
+    func testTheHeaderCrcMatchesProtocolMdExamples() {
+        // PROTOCOL.md: 0x03 for a 19-byte frame, 0xfc for 22, 0x66 for the 14-byte ACK.
+        XCTAssertEqual(DjiReceiverProtocol.crc8([0x55, 19, 0x04][...]), 0x03)
+        XCTAssertEqual(DjiReceiverProtocol.crc8([0x55, 22, 0x04][...]), 0xfc)
+        XCTAssertEqual(DjiReceiverProtocol.crc8([0x55, 14, 0x04][...]), 0x66)
+    }
+
+    func testAutoOffBitIsReadFromByte21() {
+        XCTAssertEqual(DjiReceiverProtocol.receiverAutoOff(oneTx), true)   // 0x31
+        var off = oneTx
+        off[21] = 0x30
+        XCTAssertEqual(DjiReceiverProtocol.receiverAutoOff(off), false)
+        XCTAssertNil(DjiReceiverProtocol.receiverAutoOff(level))
+    }
+
+    func testTheCommandIsPROTOCOLmdsLayoutAndChecksOut() {
+        let cmd = DjiReceiverProtocol.autoOffCommand(enabled: false, seq: 0x1234)
+        XCTAssertEqual(cmd.count, 22)
+        XCTAssertEqual(Array(cmd[0..<20]),
+                       [0x55, 0x16, 0x04, 0xfc, 0x02, 0x5a, 0x34, 0x12, 0x40, 0x5b, 0x01, 0x02,
+                        0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x01, 0x00])
+        XCTAssertTrue(DjiReceiverProtocol.checksOut(cmd))
+        XCTAssertEqual(DjiReceiverProtocol.autoOffCommand(enabled: true, seq: 1)[19], 0x01)
+    }
+}

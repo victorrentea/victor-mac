@@ -834,6 +834,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             self?.writeDjiGate(state)
             self?.djiNoTxWarning.gateChanged(state)
             self?.djiUnplugWatch.gateChanged(state)
+            // Any transmitter linked = the 🎤 red pill goes, whatever raised it.
+            // The policy's own `.linkBack` misses the case that matters most
+            // (2026-11-27): the receiver powered off with the alarm up, so it
+            // came back as a *new* receiver and its link was never "back".
+            if state == .linked, self?.micDeadAlarm.isRaised == true {
+                self?.micDeadAlarm.audioResumed()
+            }
         }
         djiReceiver.start()
         menuBarManager.djiMenuSuffix = { [weak self] in self?.djiReceiver.menuSuffix() }
