@@ -96,14 +96,47 @@ final class EmojiPickerTests: XCTestCase {
         XCTAssertEqual(keyed["☁"], "⌃⌥N")
     }
 
-    func testFirstEmojiOfAGroupLandsOnItsAnchor() {
+    func testFirstEmojiOfAZoneLandsOnItsAnchor() {
         var board = EmojiBoard()
         board.use("😀", group: 0)
+        board.use("👍", group: 1)
+        board.use("⭐", group: 7)
         board.use("🦒", group: 2)
-        board.use("🍕", group: 3)
-        XCTAssertEqual(board.slot(for: "😀").map { [$0.column, $0.row] }, [0, 0])
-        XCTAssertEqual(board.slot(for: "🦒").map { [$0.column, $0.row] }, [EmojiBoard.columns - 1, 0])
-        XCTAssertEqual(board.slot(for: "🍕").map { [$0.column, $0.row] }, [0, (EmojiBoard.rows - 1) / 2], "food: middle of the left edge")
+        let right = EmojiBoard.columns - 1, bottom = EmojiBoard.rows - 1
+        func cell(_ e: String) -> [Int]? { board.slot(for: e).map { [$0.column, $0.row] } }
+        XCTAssertEqual(cell("😀"), [0, 0], "faces: top left")
+        XCTAssertEqual(cell("👍"), [right / 2, 0], "gestures: top middle")
+        XCTAssertEqual(cell("⭐"), [right, 0], "symbols: top right")
+        XCTAssertEqual(cell("🦒"), [right, bottom], "the rest: bottom right")
+    }
+
+    func testFacesAndGesturesAreCutOutOfTheirUnicodeGroups() {
+        func zone(_ e: String) -> EmojiBoard.Region { EmojiBoard.region(for: catalog.entry(for: e)!) }
+        XCTAssertEqual(["😂", "🙈", "😺"].map(zone), [.faces, .faces, .faces])
+        XCTAssertEqual(["❤️", "💯", "💬"].map(zone), [.symbols, .symbols, .symbols], "hearts and emotion symbols are not faces")
+        XCTAssertEqual(["👋", "🙏", "🤷‍♂️", "💪", "👍🏽"].map(zone), [.gestures, .gestures, .gestures, .gestures, .gestures])
+        XCTAssertEqual(["🧑‍💻", "👶", "🍕", "🚗", "🇷🇴"].map(zone), [.rest, .rest, .rest, .rest, .rest])
+        XCTAssertEqual(["⬅️", "⇄"].map(zone), [.arrows, .arrows])
+    }
+
+    func testReorganizingPutsEveryZoneInItsCornerAndKeepsTheArrowBlock() {
+        let t = Date(timeIntervalSince1970: 5)
+        let messy = ["🦒", "😀", "⬅️", "👋", "✅", "😃", "🍕", "👍", "🎲"].enumerated().map { index, emoji in
+            EmojiSlot(emoji: emoji, column: index, row: 2, lastUsed: t)
+        }
+        var old = messy
+        old[2] = EmojiSlot(emoji: "⬅️", column: 3, row: EmojiBoard.rows - 2, lastUsed: t)
+        let board = EmojiBoard.reorganized(old, catalog: catalog)
+        func cell(_ e: String) -> [Int]? { board.slot(for: e).map { [$0.column, $0.row] } }
+        let right = EmojiBoard.columns - 1, bottom = EmojiBoard.rows - 1
+        XCTAssertEqual(cell("😀"), [0, 0], "catalog order: 😀 before 😃 takes the corner")
+        XCTAssertEqual(cell("😃"), [1, 0])
+        XCTAssertEqual(cell("👋"), [right / 2, 0], "👋 comes before 👍 in Unicode")
+        XCTAssertEqual(cell("✅"), [right, 0])
+        XCTAssertEqual(cell("🦒"), [right, bottom])
+        XCTAssertEqual(cell("⬅️"), [3, bottom - 1], "the hand-laid block does not move")
+        XCTAssertEqual(board.slots.count, old.count)
+        XCTAssertEqual(board.slot(for: "🍕")?.lastUsed, t, "\"last used\" travels with it")
     }
 
     func testArrowsHaveTheBottomLeftCornerAndHeartsWithArrowsDoNot() {
@@ -114,7 +147,7 @@ final class EmojiPickerTests: XCTestCase {
         board.use(catalog.entry(for: "🔔")!)
         XCTAssertEqual(board.slot(for: "⬇️").map { [$0.column, $0.row] }, [4, EmojiBoard.rows - 1], "its hand-laid cell")
         XCTAssertEqual(board.slot(for: "🔄").map { [$0.column, $0.row] }, [6, EmojiBoard.rows - 5])
-        XCTAssertEqual(board.slot(for: "💘").map { [$0.column, $0.row] }, [0, 0], "a smiley-group heart: top left, arrow or not")
+        XCTAssertEqual(board.slot(for: "💘").map { [$0.column, $0.row] }, [EmojiBoard.columns - 1, 0], "a heart is a symbol, arrow or not")
         XCTAssertEqual(board.slot(for: "🔔").map { [$0.column, $0.row] }, [EmojiBoard.columns - 1, EmojiBoard.rows - 1])
     }
 
@@ -185,20 +218,6 @@ final class EmojiPickerTests: XCTestCase {
         XCTAssertTrue(EmojiCatalog.plainArrows.contains { $0.emoji == "↗\u{FE0E}" }, "↗ left ⌥⇧U for the board")
     }
 
-    func testThe25By13BoardIsLaidOutOnTheSmallerOneCornersStayingCorners() {
-        let t = Date(timeIntervalSince1970: 5)
-        let board = EmojiBoard.relaid([
-            EmojiSlot(emoji: "😀", column: 0, row: 0, lastUsed: t),
-            EmojiSlot(emoji: "🐄", column: 24, row: 0, lastUsed: t),
-            EmojiSlot(emoji: "⬅️", column: 3, row: 11, lastUsed: t),
-            EmojiSlot(emoji: "🔔", column: 24, row: 12, lastUsed: t),
-        ], columns: 25, rows: 13, catalog: catalog, hadArrowCorner: true)
-        func cell(_ e: String) -> [Int]? { board.slot(for: e).map { [$0.column, $0.row] } }
-        let right = EmojiBoard.columns - 1, bottom = EmojiBoard.rows - 1
-        XCTAssertEqual([cell("😀"), cell("🐄"), cell("⬅️"), cell("🔔")], [[0, 0], [right, 0], [3, bottom - 1], [right, bottom]])
-        XCTAssertEqual(board.slot(for: "😀")?.lastUsed, t, "\"last used\" travels with it")
-    }
-
     func testGluingTheRosesMovesOnlyThePlacedArrows() {
         let middle = EmojiBoard.rows - 2, t = Date(timeIntervalSince1970: 5)
         var board = EmojiBoard(slots: [
@@ -248,27 +267,6 @@ final class EmojiPickerTests: XCTestCase {
         board.use("🍕", group: 3)
         board.use("🔙", region: .arrows)
         XCTAssertFalse(EmojiBoard.isReserved(column: cell("🔙")![0], row: cell("🔙")![1]), "other arrows grow around the block")
-    }
-
-    func testTheOldBoardIsLaidOutAgainKeepingEachRegionsShape() {
-        let at = Date(timeIntervalSince1970: 5)
-        let old = [
-            EmojiSlot(emoji: "😀", column: 0, row: 0, lastUsed: at),
-            EmojiSlot(emoji: "😃", column: 1, row: 0, lastUsed: at),
-            EmojiSlot(emoji: "🦒", column: 19, row: 0, lastUsed: at),
-            EmojiSlot(emoji: "🍕", column: 0, row: 9, lastUsed: at),
-            EmojiSlot(emoji: "🔔", column: 19, row: 9, lastUsed: at),
-            EmojiSlot(emoji: "⬇️", column: 18, row: 9, lastUsed: at),
-        ]
-        let board = EmojiBoard.relaid(old, columns: 20, rows: 10, catalog: catalog)
-        func cell(_ e: String) -> [Int]? { board.slot(for: e).map { [$0.column, $0.row] } }
-        XCTAssertEqual(cell("😀"), [0, 0])
-        XCTAssertEqual(cell("😃"), [1, 0])
-        XCTAssertEqual(cell("🦒"), [EmojiBoard.columns - 1, 0], "moved with its corner")
-        XCTAssertEqual(cell("🔔"), [EmojiBoard.columns - 1, EmojiBoard.rows - 1])
-        XCTAssertEqual(cell("⬇️"), [4, EmojiBoard.rows - 1], "arrows to their own corner")
-        XCTAssertEqual(cell("🍕"), [0, (EmojiBoard.rows - 1) / 2])
-        XCTAssertEqual(board.slot(for: "😀")?.lastUsed, at)
     }
 
     func testAPlacedEmojiNeverMovesWhateverComesAfter() {
