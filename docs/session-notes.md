@@ -139,3 +139,11 @@ Every interactive bottom-left pill (`BottomLeftBanner`) now carries **one or two
 - Hover on a button: brighter fill and the **pointing hand**, which needs `SetsCursorInBackground` on the app's window-server connection (`BackgroundCursor`, private SkyLight, looked up with `dlsym`) — the panel is non-activating, and a background app's `NSCursor.set()` is otherwise ignored.
 - The pill itself: **70 % of the old height** (90 → 63 pt, fonts scaled with it), **opaque** (a solid base under the material, which blends within the window), the **top-right corner round** (12 pt, the buttons' radius too), a hairline on the top and right edges only, and the window's shadow. Still capped at half the screen width. The same gap (6 pt) above, between, below and right of the buttons.
 - Test: `GET /test/banner/buttons?text=…&auto=send&click=cancel&countdown=8` (testing.md).
+
+## 📋 A participant's paste: From … · Copy & Dismiss / Copy & Send to all (2026-11-27)
+
+`PasteNotice` raises one click-only pill per `paste_received`: `From <name>: <first line> (+N lines)`.
+**Copy & Dismiss** (top) puts the full text on the clipboard and sinks the pill; **Copy & Send to
+all** (bottom) also appends it to the session notes as `- 📋 <text>` (`SessionNotesAppender.sendByHand`,
+the notes every participant gets) and rises away. A failed notes write leaves it copied, marked ✅,
+for a retry. No countdown, never auto-dismissed.

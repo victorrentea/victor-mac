@@ -17,6 +17,12 @@ import Cocoa
 /// see them?"*. Gone means sent, so a paste can never be written twice. If the
 /// write fails (no session / no notes file) the text is still copied, the failure
 /// flashes, and the pill stays up (✅) with Copy + Send for a retry.
+///
+/// 2026-11-27 (later), Victor: *"it should say: From <name>: … with two buttons:
+/// Copy & Dismiss and Copy & Send to all"*. The words lead with `From`, no 📋; the
+/// top button **Copy & Dismiss** copies and sinks the pill (nothing written), the
+/// bottom one **Copy & Send to all** is the old Copy + Send (copy, append to the
+/// notes the participants get, rise away; a failed append keeps the pill).
 final class PasteNotice {
     private let screensProvider: () -> [NSScreen]
     /// Every pill still up, so none is released (and vanishes) while on screen.
@@ -35,7 +41,7 @@ final class PasteNotice {
         let maxChars = 60
         if first.count > maxChars { first = String(first.prefix(maxChars)) + "…" }
         let more = lines.count > 1 ? " (+\(lines.count - 1) lines)" : ""
-        return "\(copied ? "✅" : "📋") \(sender): \(first)\(more)"
+        return "\(copied ? "✅ " : "")From \(sender): \(first)\(more)"
     }
 
     /// Main thread.
@@ -51,25 +57,31 @@ final class PasteNotice {
         let present: (Bool) -> Void = { [weak b] copied in
             b?.show(text: Self.text(sender: sender, text: text, copied: copied),
                     font: NSFont.systemFont(ofSize: 20),
-                    autoAction: .copySend, clickAction: .dismiss)
+                    autoAction: .copyDismiss, clickAction: .copySend)
         }
-        // Top button (no countdown fills it): copy, append to the notes, and leave
-        // upward. A failed append keeps the pill for another try.
-        b.onHoverCountdownExpired = { [weak self, weak b] in
+        let copy = {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
+        }
+        // Top button (no countdown fills it): copy and sink away.
+        b.onHoverCountdownExpired = { [weak self, weak b] in
+            copy()
+            overlayInfo("📋 copied + dismissed the paste from \(sender)")
+            b?.dismissSinking()
+            self?.banners[id] = nil
+        }
+        // Bottom button: copy, append to the notes everyone gets, and rise away.
+        // A failed append keeps the pill for another try.
+        b.onHover = { [weak self, weak b] in
+            copy()
             if sendToNotes(text) {
-                overlayInfo("📋 copied + sent to notes the paste from \(sender)")
+                overlayInfo("📋 copied + sent to all (notes) the paste from \(sender)")
                 b?.dismissRisingFade()
                 self?.banners[id] = nil
             } else {
                 overlayInfo("📋 copied the paste from \(sender); notes NOT written")
                 present(true)   // re-show re-arms both buttons
             }
-        }
-        b.onHover = { [weak self, weak b] in
-            b?.dismissSinking()
-            self?.banners[id] = nil
         }
         present(false)
     }
