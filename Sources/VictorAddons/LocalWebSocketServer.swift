@@ -28,6 +28,8 @@ class LocalWebSocketServer {
     var onSlideSeenCaptured: ((_ deck: String, _ slide: Int, _ updated: Bool) -> Void)?
     /// 📋 A participant sent text from the Participant View (`paste_received`).
     var onPasteReceived: ((_ sender: String, _ text: String) -> Void)?
+    /// 📄 The daemon's answer to `checkGitFile` (`OpenedFileOffer`). Main thread.
+    var onGitFileCheckResult: ((_ id: String, _ listed: Bool) -> Void)?
 
     private var listener: NWListener?
     private var connections: [UUID: NWConnection] = [:]
@@ -140,6 +142,17 @@ class LocalWebSocketServer {
     func pushGitFileOpened(url: String, branch: String, file: String) {
         let msg: [String: Any] = ["type": "git_file_opened", "url": url,
                                   "branch": branch, "file": file]
+        guard let data = try? JSONSerialization.data(withJSONObject: msg),
+              let text = String(data: data, encoding: .utf8) else { return }
+        queue.async { [weak self] in
+            self?.broadcast(text)
+        }
+    }
+
+    /// 📄 Would the daemon list this file? Asked before the pill (`OpenedFileOffer`);
+    /// answered by `git_file_check_result`.
+    func checkGitFile(id: String, url: String, file: String) {
+        let msg: [String: Any] = ["type": "git_file_check", "id": id, "url": url, "file": file]
         guard let data = try? JSONSerialization.data(withJSONObject: msg),
               let text = String(data: data, encoding: .utf8) else { return }
         queue.async { [weak self] in
@@ -305,6 +318,13 @@ class LocalWebSocketServer {
             guard !pasted.isEmpty else { break }
             DispatchQueue.main.async { [weak self] in
                 self?.onPasteReceived?(sender, pasted)
+            }
+        case "git_file_check_result":
+            // The daemon's verdict on a file about to be offered. Single consumer.
+            let id = json["id"] as? String ?? ""
+            let listed = json["listed"] as? Bool ?? false
+            DispatchQueue.main.async { [weak self] in
+                self?.onGitFileCheckResult?(id, listed)
             }
         case "ping":
             break  // ignore keep-alive

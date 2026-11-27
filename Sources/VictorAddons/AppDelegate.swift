@@ -91,6 +91,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var walkieDictSync: WalkieDictSync?
     private var tartVMIndicator: TartVMIndicator?
     private var brainBattery: BrainBatteryIndicator?
+    /// 📄 Editor "file opened" → ask the daemon → auto-send pill (`OpenedFileOffer`).
+    private lazy var openedFileOffer = OpenedFileOffer(
+        ask: { [weak self] id, url, file in self?.wsServer?.checkGitFile(id: id, url: url, file: file) },
+        push: { [weak self] url, branch, file in self?.wsServer?.pushGitFileOpened(url: url, branch: branch, file: file) })
     private var breakTimeMirror: BreakTimeMirror?
     private var breakPhoneMirror: BreakPhoneMirror?
     /// ☕ The voted countdown to the break, in the 🧠 slot of the menu bar.
@@ -2399,6 +2403,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         self.pptMonitor = pptMonitor
 
         // IntelliJ plugin → POST /intellij/file-opened → forward to the daemon via the WS bridge.
+        wsServer.onGitFileCheckResult = { [weak self] id, listed in
+            self?.openedFileOffer.checkAnswered(id: id, listed: listed)
+        }
         tabletServer?.onIntellijFileOpened = { [weak self] body in
             guard let data = body.data(using: .utf8),
                   let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
@@ -2408,18 +2415,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             }
             let url = GitRemote.https(rawUrl)
             let branch = (json["branch"] as? String) ?? ""
-            self?.wsServer?.pushGitFileOpened(url: url, branch: branch, file: file)
-            // Bottom-left flash only while a session is live — outside a session a file
-            // opening in IntelliJ is just noise (the daemon discards the push too) —
-            // and only the *first* time each file shows up: switching back and forth
-            // between two tabs must not re-announce either of them
-            // (`OpenedFileBannerLog`). The daemon still gets every push.
-            if self?.isSessionActive == true,
-               OpenedFileBannerLog.shouldAnnounce(url: url, file: file) {
-                // The sender's logo instead of 📄 (`EditorLogo`): it is the app in front.
-                let logo = EditorLogo.frontmostEditorIcon()
-                self?.statusBanner?.showOnPresence(text: EditorLogo.bannerText(file: file, hasLogo: logo != nil),
-                                                   sound: nil, visibleDuration: 3.0, icon: logo)
+            // 📄 Nothing goes to the daemon, and nothing shows, unless the daemon
+            // says it will list the file — then an auto-send pill with the
+            // sender's logo (the app in front, `EditorLogo`). See `OpenedFileOffer`.
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.openedFileOffer.fileOpened(url: url, branch: branch, file: file,
+                                                sessionActive: self.isSessionActive,
+                                                icon: EditorLogo.frontmostEditorIcon())
             }
             return "{\"ok\":true}"
         }
