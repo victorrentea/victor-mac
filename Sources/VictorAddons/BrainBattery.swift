@@ -294,7 +294,7 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
     /// depleted, o să apară o cafea"*). Just the cup, no time: `☕ 9:42` is the
     /// countdown TO the break, and the two must not be confused.
     private var breakActive = false
-    /// ☕ The big hover card while the countdown owns the slot.
+    /// ☕ The big hover card while the countdown owns the slot; 🧠 the 1.5× tooltip otherwise.
     private lazy var hoverTip = UntilBreakHoverTip(button: { [weak self] in self?.statusItem?.button })
 
     init(breakEndedAt: @escaping () -> Date?) {
@@ -346,7 +346,7 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
     /// `GET /test/break/until/tip`: the hover card for 4 s with nobody's hand on
     /// the mouse, under the slot's own window (the main display, not the projector).
     func showCountdownTipForTest() -> Bool {
-        guard countdownTitle != nil else { return false }
+        // Whichever card the slot has: ☕ countdown, else the 🧠 1.5× tooltip.
         return hoverTip.pin(seconds: 4)
     }
 
@@ -429,17 +429,19 @@ final class BrainBatteryIndicator: NSObject, NSMenuDelegate {
             hoverTip.update(remaining: countdownTitle.string.replacingOccurrences(of: "☕ ", with: ""))
             return
         }
-        hoverTip.update(remaining: nil)
         item.menu = menu
         if breakActive {
             item.button?.image = nil
             item.button?.title = "☕"
-            item.button?.toolTip = "Break — the battery refills when it ends"
+            item.button?.toolTip = nil
+            hoverTip.update(lines: ["Break — the battery refills when it ends"])
             return
         }
         item.button?.title = ""
         item.button?.image = BrainBatteryIcon.image(for: state, blinkOn: blinkOn)
-        item.button?.toolTip = summary.joined(separator: "\n")
+        // 🧠 Our own 1.5× card instead of the small native tooltip.
+        item.button?.toolTip = nil
+        hoverTip.update(lines: summary)
     }
 
     /// Full again, as of now: **Refill now**.

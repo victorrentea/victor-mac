@@ -10,10 +10,23 @@ import AppKit
 /// big type, shown after a short rest on the slot and hidden the moment the
 /// pointer leaves or the slot's menu opens.
 ///
-/// Polled, not a tracking area: the poll only runs while the countdown owns the
-/// slot (minutes a day), and it is also what notices the menu opening (the
-/// button highlights) — a tracking area would miss that exit.
+/// Polled, not a tracking area: the poll is also what notices the menu opening
+/// (the button highlights) — a tracking area would miss that exit.
+///
+/// 🧠 **Also the Brain Battery's tooltip** (2026-11-27, Victor: *"make the overall
+/// tooltip 1.5× bigger"*): `update(lines:)` shows plain lines in 16.5 pt — 1.5× the
+/// 11 pt of the native `toolTip`, whose font no API resizes per view — on a quieter
+/// card (grey hairline, no orange). So the poll now runs while the battery is on
+/// the bar too: one `NSEvent.mouseLocation` read every 0.1 s.
 final class UntilBreakHoverTip {
+    /// 1.5× the native tooltip's 11 pt.
+    static let linesFontSize: CGFloat = 16.5
+
+    private enum Content: Equatable {
+        case countdown(String)
+        case lines([String])
+    }
+
     private static let pollSeconds: TimeInterval = 0.1
     private static let restSeconds: TimeInterval = 0.25
 
@@ -24,7 +37,7 @@ final class UntilBreakHoverTip {
     private var panel: NSPanel?
     private let headline = NSTextField(labelWithString: "")
     private let rule = NSTextField(labelWithString: "")
-    private var remainingText = ""
+    private var content: Content?
 
     init(button: @escaping () -> NSStatusBarButton?) {
         self.button = button
@@ -32,9 +45,25 @@ final class UntilBreakHoverTip {
 
     /// Countdown on (non-nil, e.g. `9:42`) or off (nil).
     func update(remaining: String?) {
-        guard let remaining else { stop(); return }
-        remainingText = remaining
-        headline.stringValue = "☕ Break in \(remaining)"
+        set(remaining.map { .countdown($0) })
+    }
+
+    /// 🧠 A plain tooltip of these lines (the first in semibold), or off (nil/empty).
+    func update(lines: [String]?) {
+        set(lines.flatMap { $0.isEmpty ? nil : .lines($0) })
+    }
+
+    private func set(_ new: Content?) {
+        guard let new else { stop(); content = nil; return }
+        let old = content
+        content = new
+        switch (old, new) {
+        case (.countdown?, .countdown(let remaining)):
+            headline.stringValue = "☕ Break in \(remaining)"   // same card, new time
+        case (let old?, _) where old != new:
+            hide()   // other card or other lines: rebuilt on the next tick, still hovered
+        default: break
+        }
         if poll == nil {
             let t = Timer(timeInterval: Self.pollSeconds, repeats: true) { [weak self] _ in self?.tick() }
             RunLoop.main.add(t, forMode: .common)
@@ -52,7 +81,7 @@ final class UntilBreakHoverTip {
     private var pinnedUntil: Date?
 
     func pin(seconds: TimeInterval) -> Bool {
-        guard poll != nil, let win = button()?.window else { return false }
+        guard poll != nil, content != nil, let win = button()?.window else { return false }
         pinnedUntil = Date().addingTimeInterval(seconds)
         if panel == nil { show(under: win.frame, screen: win.screen) }
         return true
@@ -73,8 +102,15 @@ final class UntilBreakHoverTip {
     }
 
     private func show(under slot: NSRect, screen: NSScreen?) {
-        let p = makePanel()
-        headline.stringValue = "☕ Break in \(remainingText)"
+        guard let content else { return }
+        let p: NSPanel
+        switch content {
+        case .countdown(let remaining):
+            p = makePanel()
+            headline.stringValue = "☕ Break in \(remaining)"
+        case .lines(let lines):
+            p = makeLinesPanel(lines)
+        }
         p.contentView?.layoutSubtreeIfNeeded()
         let size = p.contentView?.fittingSize ?? NSSize(width: 420, height: 110)
         let visible = (screen ?? NSScreen.main)?.visibleFrame ?? slot
@@ -96,7 +132,7 @@ final class UntilBreakHoverTip {
         panel = nil
     }
 
-    private func makePanel() -> NSPanel {
+    private static func emptyPanel() -> NSPanel {
         let p = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
                         backing: .buffered, defer: false)
         p.isOpaque = false
@@ -105,7 +141,47 @@ final class UntilBreakHoverTip {
         p.ignoresMouseEvents = true
         p.level = .popUpMenu
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        return p
+    }
 
+    private static func fill(_ box: NSView, with stack: NSStackView) {
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: box.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+        ])
+    }
+
+    /// 🧠 The native tooltip's look, scaled 1.5×: dark, grey hairline, white text.
+    private func makeLinesPanel(_ lines: [String]) -> NSPanel {
+        let p = Self.emptyPanel()
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.backgroundColor = NSColor(white: 0.12, alpha: 0.96).cgColor
+        box.layer?.cornerRadius = 9
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = NSColor(white: 1, alpha: 0.22).cgColor
+        let labels = lines.enumerated().map { i, line -> NSTextField in
+            let l = NSTextField(labelWithString: line)
+            l.font = .systemFont(ofSize: Self.linesFontSize, weight: i == 0 ? .semibold : .regular)
+            l.textColor = .white
+            return l
+        }
+        let stack = NSStackView(views: labels)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 3
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 9, right: 12)
+        Self.fill(box, with: stack)
+        p.contentView = box
+        return p
+    }
+
+    private func makePanel() -> NSPanel {
+        let p = Self.emptyPanel()
         let box = NSView()
         box.wantsLayer = true
         box.layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.94).cgColor
@@ -125,14 +201,7 @@ final class UntilBreakHoverTip {
         stack.alignment = .leading
         stack.spacing = 6
         stack.edgeInsets = NSEdgeInsets(top: 14, left: 20, bottom: 16, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        box.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: box.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor),
-        ])
+        Self.fill(box, with: stack)
         p.contentView = box
         return p
     }
