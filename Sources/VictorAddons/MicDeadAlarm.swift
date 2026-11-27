@@ -114,34 +114,70 @@ final class MicDeadAlarm {
     }
 }
 
-/// 🎤 The DJI transmitter's battery, when it is low: the app's ordinary
-/// bottom-left notification, `🎤 10%`, **with a sound**, each time the
-/// reading changes while it is under 30 % — on the receiver's 7-step gauge
-/// levels 5, 6 and 7 (20 %, 10 %, 5 %) — and every minute while it sits on
-/// the last step (`DjiReceiverPolicy.lastStepRepeat`). Silent until
-/// 2026-11-23, when the TX died with both notices unseen.
+/// 🎤 The DJI transmitter's battery, when it is low: a **red pill in the
+/// bottom-left corner that stays until clicked**, `🎤 20%`, **with a sound**,
+/// each time the reading changes while it is under 30 % — on the receiver's
+/// 7-step gauge levels 5, 6 and 7 (20 %, 10 %, 5 %) — and every minute while
+/// it sits on the last step (`DjiReceiverPolicy.lastStepRepeat`). A new step
+/// replaces the pill that is up; the TX charging (or reading 30 %+ again)
+/// takes it down.
+///
+/// History: silent 5–8 s glass notices until 2026-11-23 (the TX died with
+/// both unseen), then 8 s with a sound — and on 2026-11-27 the 20 % one went
+/// by unseen again at 16:01 (Victor: *"I want a warning every time it goes
+/// below 20 … red in the corner left overlay"*). So it is the same click-only
+/// red pill as `MicDeadAlarm` now, not a transient `StatusBanner` message.
 ///
 /// **The icon alone names the mic** (2026-10-02, Victor: *"nu mai scrie «DJI»
 /// … doar icon-ul lui … plus bateria"*): 🎤 is the DJI's glyph in `MicRoster`,
 /// and a percentage next to it can only be a battery.
-///
-/// Shown through the app's shared `StatusBanner` (`show`), so it takes its
-/// turn with every other corner message instead of stacking on top of one.
 final class DjiBatteryNotice {
-    static let hold: TimeInterval = 8
+    static let color = MicDeadAlarm.color
     /// Low (20 %, 10 %) and last step (5 %): two sounds, so the last one is
     /// told apart without looking.
     static func soundName(level: Int) -> String { level >= 7 ? "Basso" : "Submarine" }
-    private let show: (String, NSSound?) -> Void
 
-    init(show: @escaping (String, NSSound?) -> Void) { self.show = show }
+    private let screensProvider: () -> [NSScreen]
+    private let sound: (Int) -> Void
+    private var banner: BottomLeftBanner?
+    private(set) var shownText: String?
+
+    init(screensProvider: @escaping () -> [NSScreen] = { NSScreen.pillScreens },
+         sound: @escaping (Int) -> Void = { level in
+             NSSound(named: NSSound.Name(DjiBatteryNotice.soundName(level: level)))?.play() }) {
+        self.screensProvider = screensProvider
+        self.sound = sound
+    }
+
+    var isShown: Bool { shownText != nil }
 
     static func text(percent: Int) -> String { "🎤 \(percent)%" }
 
-    func show(level: Int, percent: Int) {
+    /// Show (or replace) the red pill. `screens` overrides where it is drawn —
+    /// only the test hooks use it, to keep a test off the projected retina.
+    func show(level: Int, percent: Int, screens: (() -> [NSScreen])? = nil) {
         let text = Self.text(percent: percent)
-        overlayInfo("🎤 battery notice: \(text) (raw level \(level)/7)")
-        show(text, NSSound(named: NSSound.Name(Self.soundName(level: level))))
+        overlayError("🎤🔋 battery notice: \(text) (raw level \(level)/7)")
+        banner?.dismissSinking()
+        shownText = text
+        let b = BottomLeftBanner(screensProvider: screens ?? screensProvider, hoverable: true)
+        banner = b
+        b.clickOnly = true
+        b.onHover = { [weak self, weak b] in self?.hide(by: "click", only: b) }
+        b.onHoverCountdownExpired = { [weak self, weak b] in self?.hide(by: "right-click", only: b) }
+        b.show(text: text, backgroundColor: Self.color, clickAction: .dismiss)
+        sound(level)
+    }
+
+    /// Seen, or no longer true (charging, back over 30 %). `only` ignores a
+    /// late click on a pill that a newer step has already replaced.
+    func hide(by how: String, only which: BottomLeftBanner? = nil) {
+        guard let text = shownText else { return }
+        if let which, which !== banner { return }
+        overlayInfo("🎤🔋 battery notice dismissed (\(how)); it said: \(text)")
+        shownText = nil
+        banner?.dismissSinking()
+        banner = nil
     }
 }
 

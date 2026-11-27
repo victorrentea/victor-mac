@@ -52,11 +52,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         resume: { [weak self] in self?.micDeadAlarm.audioResumed() })
     /// 🎤 the receiver's own status over USB: TX linked + battery gauge.
     private let djiReceiver = DjiReceiverMonitor()
-    private lazy var djiBatteryNotice = DjiBatteryNotice(show: { [weak self] text, sound in
-        self?.statusBanner?.showNow(text: text, sound: sound, visibleDuration: DjiBatteryNotice.hold)
-    })
-    /// The test hooks' own corner pill, so a review can stay off the retina.
-    private var djiTestStatusBanner: StatusBanner?
+    /// 🎤🔋 red sticky pill while the DJI transmitter is under 30 %.
+    private let djiBatteryNotice = DjiBatteryNotice()
     private var wsServer: LocalWebSocketServer?
     private var tabletServer: TabletHttpServer?
     /// ✋ The amber "an agent is driving" frame. Owned here rather than by a
@@ -863,14 +860,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             case "battery":
                 let lvl = level ?? 6
                 guard let pct = DjiReceiverProtocol.percent(level: lvl) else { return "{\"error\":\"level 1-7\"}" }
-                if screens == "all" {
-                    self.djiBatteryNotice.show(level: lvl, percent: pct)
-                } else {
-                    let banner = self.djiTestStatusBanner ?? StatusBanner(screensProvider: provider)
-                    self.djiTestStatusBanner = banner
-                    DjiBatteryNotice(show: { text, _ in banner.showNow(text: text, sound: nil, visibleDuration: DjiBatteryNotice.hold) })
-                        .show(level: lvl, percent: pct)
-                }
+                self.djiBatteryNotice.show(level: lvl, percent: pct, screens: provider)
             case "link-lost":
                 overlayInfo("🎤 test hook: simulating a link loss (the next two lines are not the receiver)")
                 self.handleDjiReceiverEvent(.linkLost(since: Date(), lastLevel: level), screens: provider)
@@ -2942,6 +2932,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         case .levelChanged(let unit, let level, let charging):
             let pct = DjiReceiverProtocol.percent(level: level).map { "\($0) %" } ?? "unknown"
             overlayInfo("🎤 DJI TX\(unit) battery level \(level)/7 (\(pct))\(charging ? ", charging" : "")")
+            if charging || (DjiReceiverProtocol.percent(level: level) ?? 0) >= DjiReceiverPolicy.lowPercent {
+                djiBatteryNotice.hide(by: charging ? "charging" : "battery back to \(pct)")
+            }
         case .lowBattery(_, let level, let percent):
             djiBatteryNotice.show(level: level, percent: percent)
         case .linkLost(let since, let lastLevel):
