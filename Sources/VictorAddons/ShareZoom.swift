@@ -338,8 +338,11 @@ final class ShareZoom: NSObject, SCStreamOutput, SCStreamDelegate {
     /// ScreenBrush does it: entering its drawing mode it finds the cursor hidden and
     /// shows it (it imports `CGCursorIsVisible` + `CGDisplayShowCursor`), so the room
     /// saw its brush cursor beside the drawn one (Victor, 2026-10-26).
+    /// 200 was too few and 20 Hz too slow: on 2026-11-27 one zoom with Chrome in front
+    /// needed 170 rehides, each a flash of up to 50 ms of a second arrow — Victor saw
+    /// "two mice". Now looked at 60×/s (≤ 1 frame) with room for ~30 s of fighting.
     private var rehides = 0
-    private static let maxRehides = 200
+    private static let maxRehides = 2000
     private var hotSpot = CGPoint.zero
     /// The system cursor's own size, in points. Kept here and never read back from
     /// the layer: the layer's bounds are the *magnified* size after the first frame,
@@ -947,13 +950,13 @@ final class ShareZoom: NSObject, SCStreamOutput, SCStreamDelegate {
             }
             if now < reassertUntil, tickCount % 30 == 0 { hideCursor(again: true) }
             // Anyone else may show it too — ScreenBrush does, on entering its drawing
-            // mode. Looked at 20×/s, hidden again at once. Capped: every hide is
-            // undone one by one at the end, and an app fighting back forever must not
-            // pile up thousands of them.
-            if tickCount % 6 == 3, rehides < Self.maxRehides, Self.cursorIsVisible?() == true {
+            // mode. Looked at 60×/s (every other 120 Hz tick), hidden again at once.
+            // Capped: every hide is undone one by one at the end, and an app fighting
+            // back forever must not pile up unbounded numbers of them.
+            if tickCount % 2 == 1, rehides < Self.maxRehides, Self.cursorIsVisible?() == true {
                 hideCursor(again: true)
                 rehides += 1
-                if rehides == 1 || rehides == Self.maxRehides {
+                if rehides == 1 || rehides % 100 == 0 || rehides == Self.maxRehides {
                     let front = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
                     overlayInfo("🔎 ShareZoom: the real cursor came back (front: \(front)) — hidden again ×\(rehides)")
                 }

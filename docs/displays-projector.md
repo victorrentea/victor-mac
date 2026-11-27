@@ -348,10 +348,13 @@ capture path carries. Same trade as the 🔍 Pink Panther glass (tile #6 in
   a `cursorWasHidden`, i.e. on entering drawing mode it finds the cursor hidden and shows
   it. So the cursor is also *watched*: `CGCursorIsVisible` (unavailable to Swift since
   the macOS 26 SDK, resolved via dlsym; ~0 ms) reports the cursor for **every** process —
-  measured with two probes, one hiding, one reading — and is read at 20 Hz while the
-  pointer is on the zoomed display; visible ⇒ hidden again at once. Capped at 200 per
-  zoom (each one is undone at the end), counted as `rehides` in `/test/share-zoom`, and
-  the first one logged with the frontmost app. A foreign `CGDisplayShowCursor` from a
+  measured with two probes, one hiding, one reading — and is read at 60 Hz (every other
+  120 Hz tick) while the pointer is on the zoomed display; visible ⇒ hidden again at
+  once. Capped at 2000 per zoom (each one is undone at the end), counted as `rehides` in
+  `/test/share-zoom`, and the 1st, every 100th and the last logged with the frontmost app.
+  Until 2026-11-27 it was 20 Hz and a cap of 200: one zoom with Chrome in front (and
+  ScreenBrush running) needed **170** rehides, each leaving the real arrow up to 50 ms
+  beside the drawn one — a flickering second cursor ("Why do I have two mouse?"). A foreign `CGDisplayShowCursor` from a
   *background* process does not reveal it (probed); a foreground one evidently does. Verifying this needs a ScreenCaptureKit capture with
   `showsCursor = true` (it omits a hidden cursor — calibrated with a probe process that
   hid it); `screencapture -C` draws the cursor even while it is hidden and lies.
