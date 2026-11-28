@@ -5,8 +5,15 @@ import Foundation
 /// Plays a downloaded video **in-process**, in a borderless window that covers
 /// the **built-in Retina** screen and sits above everything else on it — and
 /// manages its lifetime: a new play **replaces** the previous one, and the
-/// player is **auto-killed ~60s after playback starts** so a snippet left
-/// running doesn't linger on the projected screen.
+/// player **runs the clip to its end** — never cut at a fixed minute — and is
+/// then auto-closed (`killDelay`) so a snippet left up doesn't linger on the
+/// projected screen.
+///
+/// **No 60 s cut any more (2026-11-28).** Until then every clip was closed 60 s
+/// after it started, whatever was left of it; a 4:42 clip showed its first
+/// minute only. Victor: "dacă vreau să mă uit la tot, de ce-l oprești?" — ESC
+/// and the tablet stop it, the player does not. The minute survives only as the
+/// floor of the window's lifetime, so a short clip still closes exactly as it did.
 ///
 /// **Why no IINA any more (2026-09-24).** Until today the clip was handed to
 /// IINA and its window was dragged onto the Retina through the Accessibility
@@ -67,8 +74,19 @@ import Foundation
 final class VideoPlayer {
     static let shared = VideoPlayer()
 
-    /// Seconds after which the player is force-closed (0 disables auto-kill).
+    /// The window's shortest life, counted from the (re)start: a clip shorter
+    /// than this stays up rewound for SPACE until then (0 disables auto-kill).
     var autoKillAfter: TimeInterval = 60
+    /// How long a clip that ran past `autoKillAfter` stays up, rewound, after its end.
+    var endLinger: TimeInterval = 10
+
+    /// When to close the window, from now, with `left` seconds of clip still to
+    /// play: the clip always finishes, then lingers — but never sooner than the
+    /// `minimum` a short clip always had. Unknown length → the minimum.
+    static func killDelay(left: TimeInterval?, minimum: TimeInterval, linger: TimeInterval) -> TimeInterval {
+        guard let left, left.isFinite, left > 0 else { return minimum }
+        return max(minimum, left + linger)
+    }
 
     private var autoKill: DispatchWorkItem?
     private var window: VideoWindow?
@@ -94,8 +112,8 @@ final class VideoPlayer {
     private var holdEndSeconds = 0
 
     /// Launch (or replace) the player at `startSeconds`, covering the Retina.
-    /// Returns **how many milliseconds it is scheduled to run** — the shorter of
-    /// what is left of the clip and the auto-kill window — or nil if the file is
+    /// Returns **how many milliseconds it is scheduled to run** — what is left of
+    /// the clip after the start second — or nil if the file is
     /// missing. Same contract as `VideoSoundtrackPlayer.play`: the tablet holds
     /// its video page open for that long, and drains the ring on the tile.
     ///
@@ -168,26 +186,40 @@ final class VideoPlayer {
         }
 
         overlayInfo("VideoPlayer: playing \(fileURL.lastPathComponent) from \(start)s on \(screen.localizedName) \(screen.frame)")
-        scheduleAutoKill()
-        let planned = plannedSeconds(fileURL: fileURL, startSeconds: start)
+        let left = secondsLeft(fileURL: fileURL, startSeconds: start)
         activeSince = Date()
         activeId = id
-        activeDeadline = Date().addingTimeInterval(planned)
         atEndPaused = false
+        let planned = arm(left: left)
         return Int(planned * 1000)
     }
 
-    /// How long this play will actually last: what is left of the clip after the
-    /// start second, capped by the auto-kill. Falls back to the auto-kill window
-    /// when the file's duration can't be read — the cap is the only promise that
-    /// holds for every clip anyway.
-    private func plannedSeconds(fileURL: URL, startSeconds: Int) -> TimeInterval {
-        let cap = autoKillAfter > 0 ? autoKillAfter : 600
+    /// What is left of the clip after the start second, nil when the file's
+    /// duration can't be read.
+    private func secondsLeft(fileURL: URL, startSeconds: Int) -> TimeInterval? {
         let d = AVURLAsset(url: fileURL).duration
-        guard d.isNumeric else { return cap }
+        guard d.isNumeric else { return nil }
         let remaining = CMTimeGetSeconds(d) - Double(startSeconds)
-        guard remaining > 0 else { return cap }
-        return min(remaining, cap)
+        return remaining > 0 ? remaining : nil
+    }
+
+    /// What is left of the loaded clip after `from` seconds, nil when unknown.
+    private func secondsLeft(from: Double) -> TimeInterval? {
+        guard let item = player?.currentItem else { return nil }
+        let d = CMTimeGetSeconds(item.duration)
+        guard d.isFinite, d > from else { return nil }
+        return d - from
+    }
+
+    /// (Re)start the clock for a play with `left` seconds to go: the tablet's
+    /// deadline is the clip's end, the auto-kill `killDelay` after now. Returns
+    /// the planned seconds (the auto-kill floor when the length is unknown).
+    @discardableResult
+    private func arm(left: TimeInterval?) -> TimeInterval {
+        let planned = left ?? autoKillAfter
+        activeDeadline = Date().addingTimeInterval(planned)
+        scheduleAutoKill(after: Self.killDelay(left: left, minimum: autoKillAfter, linger: endLinger))
+        return planned
     }
 
     /// 🔉 The tablet moved this clip's volume bar while it is up. Another id
@@ -328,8 +360,8 @@ final class VideoPlayer {
     /// replays it. Not `stop()`: the window stays up on purpose.
     ///
     /// A clip with `holdEndSeconds` keeps its **last** frame instead, for that
-    /// long: the auto-kill is re-armed from now, since the 60 s one was counted
-    /// from the start and would cut the hold short (LGTM ends at 58 s).
+    /// long: the auto-kill is re-armed from now, since the one armed at the start
+    /// would cut the hold short (LGTM ends at 58 s).
     private func reachedEnd() {
         guard let player else { return }
         player.pause()
@@ -355,14 +387,16 @@ final class VideoPlayer {
         if atEndPaused {
             atEndPaused = false
             activeSince = Date()
-            activeDeadline = Date().addingTimeInterval(autoKillAfter)
-            scheduleAutoKill()
+            arm(left: secondsLeft(from: Double(startSeconds)))
             if holdEndSeconds > 0 {
                 // Held on the last frame, not rewound: go back to the start first.
                 player.seek(to: CMTime(seconds: Double(startSeconds), preferredTimescale: 600),
                             toleranceBefore: .zero, toleranceAfter: .zero) { [weak player] _ in player?.play() }
                 return
             }
+        } else if let left = secondsLeft(from: CMTimeGetSeconds(player.currentTime())) {
+            // Resumed mid-clip after a pause: the rest of it gets its full time.
+            arm(left: left)
         }
         player.play()
     }
@@ -388,8 +422,7 @@ final class VideoPlayer {
     private func promptAnswered() {
         guard let player, let item = player.currentItem else { return }
         let left = CMTimeGetSeconds(item.duration) - CMTimeGetSeconds(player.currentTime())
-        activeDeadline = Date().addingTimeInterval(left.isFinite ? max(1, left) : autoKillAfter)
-        scheduleAutoKill()
+        arm(left: left.isFinite ? max(1, left) : nil)
         overlayInfo("VideoPlayer: ✍️ answer \"\(window?.promptAnswer ?? "")\"")
         player.play()
     }
@@ -417,8 +450,12 @@ final class VideoPlayer {
         if resume {
             atEndPaused = false
             activeSince = Date()
-            activeDeadline = Date().addingTimeInterval(autoKillAfter)
-            scheduleAutoKill()
+        }
+        // Any landed seek moves the clip's end: a jump back must not be cut by
+        // the deadline armed for the old position. (Not while the end is held
+        // or rewound and this is only a drag — nothing plays then.)
+        if exact && (resume || !atEndPaused) {
+            arm(left: secondsLeft(from: target))
         }
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
                     toleranceBefore: slack, toleranceAfter: slack) { [weak player] done in
